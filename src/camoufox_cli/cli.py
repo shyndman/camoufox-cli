@@ -17,6 +17,10 @@ def get_socket_path(session: str) -> str:
     return f"{SOCKET_PREFIX}{session}.sock"
 
 
+def get_log_path(session: str) -> str:
+    return f"{SOCKET_PREFIX}{session}.log"
+
+
 def send_command(sock_path: str, command: dict) -> dict:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.connect(sock_path)
@@ -45,13 +49,15 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
     if locale:
         cmd.extend(["--locale", locale])
 
-    subprocess.Popen(
-        cmd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    log_path = get_log_path(session)
+    with open(log_path, "ab", buffering=0) as log_file:
+        subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
 
     sock_path = get_socket_path(session)
     for _ in range(50):
@@ -59,7 +65,7 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
             return
         time.sleep(0.1)
 
-    print("Error: Daemon did not start within 5 seconds", file=sys.stderr)
+    print(f"Error: Daemon did not start within 5 seconds; see {log_path}", file=sys.stderr)
     sys.exit(1)
 
 

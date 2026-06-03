@@ -14,6 +14,10 @@ export function getSocketPath(session: string): string {
   return `${SOCKET_PREFIX}${session}.sock`;
 }
 
+export function getLogPath(session: string): string {
+  return `${SOCKET_PREFIX}${session}.log`;
+}
+
 function sendCommand(sockPath: string, command: Record<string, unknown>): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const client = net.createConnection(sockPath, () => {
@@ -41,10 +45,14 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
   if (!geoip) args.push("--no-geoip");
   if (locale) args.push("--locale", locale);
 
-  spawn("node", [daemonPath, ...args], {
+  const logPath = getLogPath(session);
+  const logFd = fs.openSync(logPath, "a");
+  const child = spawn("node", [daemonPath, ...args], {
     detached: true,
-    stdio: "ignore",
-  }).unref();
+    stdio: ["ignore", logFd, logFd],
+  });
+  child.unref();
+  fs.closeSync(logFd);
 
   const sockPath = getSocketPath(session);
   return new Promise((resolve, reject) => {
@@ -52,7 +60,7 @@ function spawnDaemon(session: string, headed: boolean, timeout: number, persiste
     const check = () => {
       if (fs.existsSync(sockPath)) return resolve();
       attempts++;
-      if (attempts >= 50) return reject(new Error("Daemon did not start within 5 seconds"));
+      if (attempts >= 50) return reject(new Error(`Daemon did not start within 5 seconds; see ${logPath}`));
       setTimeout(check, 100);
     };
     check();

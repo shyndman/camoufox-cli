@@ -2,7 +2,7 @@
 
 import pytest
 
-from camoufox_cli.cli import build_command, parse_args, list_sessions, get_socket_path
+from camoufox_cli.cli import build_command, parse_args, list_sessions, get_log_path, get_socket_path
 
 
 class TestBuildCommand:
@@ -255,3 +255,11 @@ class TestGetSocketPath:
 
     def test_custom_session(self):
         assert get_socket_path("my-session") == "/tmp/camoufox-cli-my-session.sock"
+
+
+class TestGetLogPath:
+    def test_default_session(self):
+        assert get_log_path("default") == "/tmp/camoufox-cli-default.log"
+
+    def test_custom_session(self):
+        assert get_log_path("my-session") == "/tmp/camoufox-cli-my-session.log"

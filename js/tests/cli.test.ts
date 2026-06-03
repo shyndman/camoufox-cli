@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { buildCommand, getSocketPath, parseArgs } from "../src/cli.js";
+import { buildCommand, getLogPath, getSocketPath, parseArgs } from "../src/cli.js";
 
 // buildCommand calls process.exit on error; mock it to throw instead
 beforeEach(() => {
@@ -296,5 +296,15 @@ describe("getSocketPath", () => {
 
   it("custom session", () => {
     expect(getSocketPath("my-session")).toBe("/tmp/camoufox-cli-my-session.sock");
+  });
+});
+
+describe("getLogPath", () => {
+  it("default session", () => {
+    expect(getLogPath("default")).toBe("/tmp/camoufox-cli-default.log");
+  });
+
+  it("custom session", () => {
+    expect(getLogPath("my-session")).toBe("/tmp/camoufox-cli-my-session.log");
   });
 });
