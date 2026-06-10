@@ -23,7 +23,7 @@ Tell your AI agent (e.g. OpenClaw):
 Or install manually:
 
 ```bash
-pipx install camoufox-cli
+uv tool install camoufox-cli
 camoufox-cli install              # Download browser
 ```
 
