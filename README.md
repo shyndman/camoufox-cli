@@ -23,13 +23,6 @@ Tell your AI agent (e.g. OpenClaw):
 Or install manually:
 
 ```bash
-npm install -g camoufox-cli
-camoufox-cli install              # Download browser
-```
-
-Or with pip:
-
-```bash
 pipx install camoufox-cli
 camoufox-cli install              # Download browser
 ```

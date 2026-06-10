@@ -9,10 +9,6 @@ build/
 .mypy_cache/
 uv.lock
 
-# Node
-node_modules/
-js/README.md
-
 # IDE
 .idea/
 .vscode/
