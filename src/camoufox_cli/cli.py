@@ -120,7 +120,7 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
             if i >= len(args):
                 print("Error: --timeout requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["timeout"] = int(args[i])
+            flags["timeout"] = _require_int(args[i], "--timeout (daemon idle timeout in seconds)", 1)
         elif args[i] == "--json":
             flags["json"] = True
         elif args[i] == "--persistent":
@@ -238,7 +238,7 @@ def build_command(action: str, rest: list[str]) -> dict:
         # Scroll & Wait
         case "scroll":
             direction = _require(rest, 1, "Usage: camoufox-cli scroll down [px]")
-            amount = int(rest[2]) if len(rest) > 2 else 500
+            amount = _require_int(rest[2], "scroll distance in pixels", 1) if len(rest) > 2 else 500
             return {"id": "r1", "action": "scroll", "params": {"direction": direction, "amount": amount}}
         case "wait":
             target = _require(rest, 1, "Usage: camoufox-cli wait @e1 | camoufox-cli wait 2000 | camoufox-cli wait --url \"pattern\"")
@@ -248,7 +248,7 @@ def build_command(action: str, rest: list[str]) -> dict:
             elif target.startswith("@"):
                 return {"id": "r1", "action": "wait", "params": {"ref": target}}
             elif target[0].isdigit():
-                return {"id": "r1", "action": "wait", "params": {"ms": int(target)}}
+                return {"id": "r1", "action": "wait", "params": {"ms": _require_int(target, "wait duration in milliseconds", 1)}}
             else:
                 return {"id": "r1", "action": "wait", "params": {"selector": target}}
 
@@ -257,7 +257,7 @@ def build_command(action: str, rest: list[str]) -> dict:
             return {"id": "r1", "action": "tabs", "params": {}}
         case "switch":
             index = _require(rest, 1, "Usage: camoufox-cli switch <tab-index>")
-            return {"id": "r1", "action": "switch", "params": {"index": int(index)}}
+            return {"id": "r1", "action": "switch", "params": {"index": _require_int(index, "switch tab index")}}
         case "close-tab":
             return {"id": "r1", "action": "close-tab", "params": {}}
 
@@ -288,6 +288,18 @@ def _require(args: list[str], idx: int, usage: str) -> str:
         print(usage, file=sys.stderr)
         sys.exit(1)
     return args[idx]
+
+
+def _require_int(value: str, label: str, minimum: int | None = None) -> int:
+    try:
+        n = int(value)
+    except ValueError:
+        print(f"Error: {label} must be an integer, got '{value}'", file=sys.stderr)
+        sys.exit(1)
+    if minimum is not None and n < minimum:
+        print(f"Error: {label} must be >= {minimum}, got {n}", file=sys.stderr)
+        sys.exit(1)
+    return n
 
 
 def print_response(response: dict, json_mode: bool) -> None:

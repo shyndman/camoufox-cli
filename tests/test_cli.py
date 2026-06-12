@@ -181,6 +181,29 @@ class TestBuildCommand:
         with pytest.raises(SystemExit):
             build_command("fill", ["fill", "@e1"])
 
+    # --- Numeric argument validation ---
+    def test_scroll_non_integer(self):
+        with pytest.raises(SystemExit):
+            build_command("scroll", ["scroll", "down", "fast"])
+
+    def test_scroll_below_minimum(self):
+        with pytest.raises(SystemExit):
+            build_command("scroll", ["scroll", "down", "0"])
+
+    def test_wait_ms_non_integer(self):
+        # Leading digit routes to ms parsing; trailing garbage must be rejected.
+        with pytest.raises(SystemExit):
+            build_command("wait", ["wait", "2000ms"])
+
+    def test_switch_non_integer(self):
+        with pytest.raises(SystemExit):
+            build_command("switch", ["switch", "last"])
+
+    def test_switch_negative_passes_through(self):
+        # No client-side range check; the daemon owns the valid tab range.
+        cmd = build_command("switch", ["switch", "-1"])
+        assert cmd["params"]["index"] == -1
+
 
 class TestParseArgs:
     def test_defaults(self):
@@ -247,6 +270,14 @@ class TestParseArgs:
     def test_missing_timeout_value(self):
         with pytest.raises(SystemExit):
             parse_args(["--timeout"])
+
+    def test_timeout_non_integer(self):
+        with pytest.raises(SystemExit):
+            parse_args(["--timeout", "soon", "open", "https://example.com"])
+
+    def test_timeout_below_minimum(self):
+        with pytest.raises(SystemExit):
+            parse_args(["--timeout", "0", "open", "https://example.com"])
 
 
 class TestGetSocketPath:
