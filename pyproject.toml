@@ -42,8 +42,37 @@ packages = ["src/camoufox_cli"]
 markers = [
     "integration: tests that launch a real browser (slow, requires camoufox)",
 ]
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.basedpyright]
+include = ["src", "tests"]
+exclude = [".venv"]
+pythonVersion = "3.13"
+typeCheckingMode = "recommended"
+reportMissingTypeStubs = false
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+]
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.39.7",
     "pytest>=9.0.2",
+    "ruff>=0.15.17",
 ]
