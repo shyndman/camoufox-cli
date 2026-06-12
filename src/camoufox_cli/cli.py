@@ -13,6 +13,18 @@ import time
 SOCKET_PREFIX = "/tmp/camoufox-cli-"
 
 
+class ResponseError(Exception):
+    """Raised when a failure occurs *after* the command was transmitted.
+
+    The daemon may already have executed the (possibly non-idempotent) action,
+    so callers MUST NOT retry on this error.
+    """
+
+    def __init__(self, cause: Exception):
+        super().__init__(str(cause))
+        self.cause = cause
+
+
 def get_socket_path(session: str) -> str:
     return f"{SOCKET_PREFIX}{session}.sock"
 
@@ -26,14 +38,20 @@ def send_command(sock_path: str, command: dict) -> dict:
     s.connect(sock_path)
     s.sendall(json.dumps(command).encode() + b"\n")
     s.shutdown(socket.SHUT_WR)
-    data = b""
-    while True:
-        chunk = s.recv(4096)
-        if not chunk:
-            break
-        data += chunk
-    s.close()
-    return json.loads(data.decode())
+    # Past this point the command is on the wire; any failure reading the
+    # reply is a ResponseError, never a retryable connect-phase error.
+    try:
+        data = b""
+        while True:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        return json.loads(data.decode())
+    except Exception as e:
+        raise ResponseError(e) from e
+    finally:
+        s.close()
 
 
 def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True, locale: str | None = None) -> None:
@@ -469,6 +487,15 @@ def main():
             response = send_command(sock_path, command)
             print_response(response, flags["json"])
             return
+        except ResponseError as e:
+            # Command was already delivered; the daemon may have executed it.
+            # Retrying would re-run a possibly non-idempotent action.
+            print(
+                f"Error: command sent but reply failed ({e}); not retrying to "
+                f"avoid re-running the action.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         except Exception as e:
             last_err = str(e)
             if attempt < 4:

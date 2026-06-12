@@ -1,5 +1,12 @@
 """Tests for CLI argument parsing and command building."""
 
+import json
+import os
+import socket
+import tempfile
+import threading
+import time
+
 import pytest
 
 from camoufox_cli.cli import (
@@ -10,6 +17,8 @@ from camoufox_cli.cli import (
     get_socket_path,
     _format_tabs,
     print_response,
+    send_command,
+    ResponseError,
 )
 
 
@@ -351,3 +360,65 @@ class TestPrintResponseTabs:
         lines = capsys.readouterr().out.splitlines()
         assert lines[0] == "hello"
         assert lines[1].startswith("* 0")
+
+
+class TestSendCommandRetrySafety:
+    """Regression for issue #3: a reply failure after the command is delivered
+    must surface as ResponseError so the caller never re-runs the action."""
+
+    def _serve_once(self, sock_path: str, counter: list[int], reply: bytes) -> threading.Thread:
+        def run() -> None:
+            srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            srv.bind(sock_path)
+            srv.listen(1)
+            srv.settimeout(5)
+            conn, _ = srv.accept()
+            data = b""
+            while b"\n" not in data:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    break
+                data += chunk
+            counter[0] += 1  # the (non-idempotent) action runs here
+            conn.sendall(reply)
+            conn.close()
+            srv.close()
+
+        t = threading.Thread(target=run, daemon=True)
+        t.start()
+        return t
+
+    def test_truncated_reply_raises_response_error_without_re_execution(self):
+        d = tempfile.mkdtemp()
+        sock_path = os.path.join(d, "d.sock")
+        counter = [0]
+        # Daemon dies mid-response: truncated JSON the client cannot parse.
+        t = self._serve_once(sock_path, counter, b'{"id":"r1","succ')
+        time.sleep(0.1)
+
+        with pytest.raises(ResponseError):
+            send_command(sock_path, {"id": "r1", "action": "open", "params": {}})
+
+        t.join(timeout=5)
+        assert counter[0] == 1  # executed exactly once; no internal retry
+
+    def test_successful_reply_returns_parsed_response(self):
+        d = tempfile.mkdtemp()
+        sock_path = os.path.join(d, "d.sock")
+        counter = [0]
+        reply = json.dumps({"id": "r1", "success": True, "data": {}}).encode()
+        t = self._serve_once(sock_path, counter, reply)
+        time.sleep(0.1)
+
+        resp = send_command(sock_path, {"id": "r1", "action": "title", "params": {}})
+
+        t.join(timeout=5)
+        assert resp["success"] is True
+        assert counter[0] == 1
+
+    def test_connect_failure_is_not_response_error(self):
+        # A daemon that is not yet up must remain retryable (not ResponseError).
+        missing = os.path.join(tempfile.mkdtemp(), "nope.sock")
+        with pytest.raises(Exception) as exc:
+            send_command(missing, {"id": "r1", "action": "title", "params": {}})
+        assert not isinstance(exc.value, ResponseError)
