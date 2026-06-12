@@ -339,4 +339,4 @@ rm -rf ~/.camoufox-cli/profiles/alice
 
 ## Documentation
 
-- [camoufox-cli documentation](https://github.com/Bin-Huang/camoufox-cli) -- Full README, setup guide, installation, and command reference
+- [camoufox-cli documentation](https://github.com/shyndman/camoufox-cli) -- Full README, setup guide, installation, and command reference
