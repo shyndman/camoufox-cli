@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import socket
@@ -73,7 +74,7 @@ class ResponseError(Exception):
 
     def __init__(self, cause: Exception):
         super().__init__(str(cause))
-        self.cause = cause
+        self.cause: Exception = cause
 
 
 def get_socket_path(session: str) -> str:
@@ -105,8 +106,24 @@ def send_command(sock_path: str, command: Command) -> Response:
         s.close()
 
 
-def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True, locale: str | None = None) -> None:
-    cmd = [sys.executable, "-m", "camoufox_cli", "--session", session, "--timeout", str(timeout)]
+def spawn_daemon(
+    session: str,
+    headed: bool,
+    timeout: int,
+    persistent: str | None,
+    proxy: str | None = None,
+    geoip: bool = True,
+    locale: str | None = None,
+) -> None:
+    cmd = [
+        sys.executable,
+        "-m",
+        "camoufox_cli",
+        "--session",
+        session,
+        "--timeout",
+        str(timeout),
+    ]
     if headed:
         cmd.append("--headed")
     if persistent:
@@ -120,7 +137,7 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
 
     log_path = get_log_path(session)
     with open(log_path, "ab", buffering=0) as log_file:
-        subprocess.Popen(
+        _ = subprocess.Popen(
             cmd,
             stdin=subprocess.DEVNULL,
             stdout=log_file,
@@ -134,11 +151,21 @@ def spawn_daemon(session: str, headed: bool, timeout: int, persistent: str | Non
             return
         time.sleep(0.1)
 
-    print(f"Error: Daemon did not start within 5 seconds; see {log_path}", file=sys.stderr)
+    print(
+        f"Error: Daemon did not start within 5 seconds; see {log_path}", file=sys.stderr
+    )
     sys.exit(1)
 
 
-def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | None, proxy: str | None = None, geoip: bool = True, locale: str | None = None) -> None:
+def ensure_daemon(
+    session: str,
+    headed: bool,
+    timeout: int,
+    persistent: str | None,
+    proxy: str | None = None,
+    geoip: bool = True,
+    locale: str | None = None,
+) -> None:
     sock_path = get_socket_path(session)
     if os.path.exists(sock_path):
         # Verify daemon is actually alive by trying to connect
@@ -150,19 +177,17 @@ def ensure_daemon(session: str, headed: bool, timeout: int, persistent: str | No
             return
         except (ConnectionRefusedError, OSError):
             # Stale socket from a dead daemon — clean up
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(sock_path)
-            except FileNotFoundError:
-                pass
     spawn_daemon(session, headed, timeout, persistent, proxy, geoip, locale)
 
 
 def list_sessions() -> list[str]:
-    sessions = []
+    sessions: list[str] = []
     try:
         for name in os.listdir("/tmp"):
             if name.startswith("camoufox-cli-") and name.endswith(".sock"):
-                sessions.append(name[len("camoufox-cli-"):-len(".sock")])
+                sessions.append(name[len("camoufox-cli-") : -len(".sock")])
     except OSError:
         pass
     sessions.sort()
@@ -189,12 +214,16 @@ def parse_args(args: list[str]) -> tuple[Flags, Command]:
             if i >= len(args):
                 print("Error: --timeout requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags.timeout = _require_int(args[i], "--timeout (daemon idle timeout in seconds)", 1)
+            flags.timeout = _require_int(
+                args[i], "--timeout (daemon idle timeout in seconds)", 1
+            )
         elif args[i] == "--json":
             flags.json = True
         elif args[i] == "--persistent":
-            # Optional value: if next arg looks like a path, use it; otherwise use default
-            if i + 1 < len(args) and ("/" in args[i + 1] or args[i + 1].startswith((".", "~"))):
+            # Optional path value: use next arg if it looks like a path, else default
+            if i + 1 < len(args) and (
+                "/" in args[i + 1] or args[i + 1].startswith((".", "~"))
+            ):
                 i += 1
                 flags.persistent = args[i]
             else:
@@ -251,7 +280,9 @@ def build_command(action: str, rest: list[str]) -> Command:
             selector = None
             if "-s" in rest:
                 idx = rest.index("-s")
-                selector = _require(rest, idx + 1, "Usage: camoufox-cli snapshot -s <selector>")
+                selector = _require(
+                    rest, idx + 1, "Usage: camoufox-cli snapshot -s <selector>"
+                )
             return SnapshotCommand(
                 id="r1",
                 params=SnapshotParams(interactive="-i" in rest, selector=selector),
@@ -262,16 +293,16 @@ def build_command(action: str, rest: list[str]) -> Command:
             ref = _require(rest, 1, "Usage: camoufox-cli click @e1")
             return ClickCommand(id="r1", params=RefParams(ref=ref))
         case "fill":
-            ref = _require(rest, 1, "Usage: camoufox-cli fill @e1 \"text\"")
-            text = _require(rest, 2, "Usage: camoufox-cli fill @e1 \"text\"")
+            ref = _require(rest, 1, 'Usage: camoufox-cli fill @e1 "text"')
+            text = _require(rest, 2, 'Usage: camoufox-cli fill @e1 "text"')
             return FillCommand(id="r1", params=RefTextParams(ref=ref, text=text))
         case "type":
-            ref = _require(rest, 1, "Usage: camoufox-cli type @e1 \"text\"")
-            text = _require(rest, 2, "Usage: camoufox-cli type @e1 \"text\"")
+            ref = _require(rest, 1, 'Usage: camoufox-cli type @e1 "text"')
+            text = _require(rest, 2, 'Usage: camoufox-cli type @e1 "text"')
             return TypeCommand(id="r1", params=RefTextParams(ref=ref, text=text))
         case "select":
-            ref = _require(rest, 1, "Usage: camoufox-cli select @e1 \"option\"")
-            value = _require(rest, 2, "Usage: camoufox-cli select @e1 \"option\"")
+            ref = _require(rest, 1, 'Usage: camoufox-cli select @e1 "option"')
+            value = _require(rest, 2, 'Usage: camoufox-cli select @e1 "option"')
             return SelectCommand(id="r1", params=SelectParams(ref=ref, value=value))
         case "check":
             ref = _require(rest, 1, "Usage: camoufox-cli check @e1")
@@ -285,10 +316,12 @@ def build_command(action: str, rest: list[str]) -> Command:
 
         # Data extraction
         case "text":
-            target = _require(rest, 1, "Usage: camoufox-cli text @e1 | camoufox-cli text body")
+            target = _require(
+                rest, 1, "Usage: camoufox-cli text @e1 | camoufox-cli text body"
+            )
             return TextCommand(id="r1", params=TextParams(target=target))
         case "eval":
-            expr = _require(rest, 1, "Usage: camoufox-cli eval \"document.title\"")
+            expr = _require(rest, 1, 'Usage: camoufox-cli eval "document.title"')
             return EvalCommand(id="r1", params=EvalParams(expression=expr))
         case "screenshot":
             screenshot_params = ScreenshotParams()
@@ -305,12 +338,25 @@ def build_command(action: str, rest: list[str]) -> Command:
         # Scroll & Wait
         case "scroll":
             direction = _require(rest, 1, "Usage: camoufox-cli scroll down [px]")
-            amount = _require_int(rest[2], "scroll distance in pixels", 1) if len(rest) > 2 else 500
-            return ScrollCommand(id="r1", params=ScrollParams(direction=direction, amount=amount))
+            amount = (
+                _require_int(rest[2], "scroll distance in pixels", 1)
+                if len(rest) > 2
+                else 500
+            )
+            return ScrollCommand(
+                id="r1", params=ScrollParams(direction=direction, amount=amount)
+            )
         case "wait":
-            target = _require(rest, 1, "Usage: camoufox-cli wait @e1 | camoufox-cli wait 2000 | camoufox-cli wait --url \"pattern\"")
+            target = _require(
+                rest,
+                1,
+                "Usage: camoufox-cli wait @e1 | camoufox-cli wait 2000 "
+                + '| camoufox-cli wait --url "pattern"',
+            )
             if target == "--url":
-                pattern = _require(rest, 2, "Usage: camoufox-cli wait --url \"*/dashboard\"")
+                pattern = _require(
+                    rest, 2, 'Usage: camoufox-cli wait --url "*/dashboard"'
+                )
                 return WaitCommand(id="r1", params=WaitParams(url=pattern))
             elif target.startswith("@"):
                 return WaitCommand(id="r1", params=WaitParams(ref=target))
@@ -334,7 +380,9 @@ def build_command(action: str, rest: list[str]) -> Command:
 
         # Install
         case "install":
-            return InstallCommand(id="r1", params=InstallParams(with_deps="--with-deps" in rest))
+            return InstallCommand(
+                id="r1", params=InstallParams(with_deps="--with-deps" in rest)
+            )
 
         # Session & Cookies
         case "sessions":
@@ -342,10 +390,14 @@ def build_command(action: str, rest: list[str]) -> Command:
         case "cookies":
             if len(rest) > 1 and rest[1] == "import":
                 path = _require(rest, 2, "Usage: camoufox-cli cookies import file.json")
-                return CookiesCommand(id="r1", params=CookiesParams(op="import", path=path))
+                return CookiesCommand(
+                    id="r1", params=CookiesParams(op="import", path=path)
+                )
             elif len(rest) > 1 and rest[1] == "export":
                 path = _require(rest, 2, "Usage: camoufox-cli cookies export file.json")
-                return CookiesCommand(id="r1", params=CookiesParams(op="export", path=path))
+                return CookiesCommand(
+                    id="r1", params=CookiesParams(op="export", path=path)
+                )
             else:
                 return CookiesCommand(id="r1", params=CookiesParams(op="list"))
 
@@ -385,27 +437,35 @@ def print_response(response: Response, json_mode: bool) -> None:
     if response.data is None:
         return
 
+    tabs = response.data.tabs
+
     data = response.data.model_dump(exclude_none=True)
     if not data:
         return
 
-    tabs = data.get("tabs")
-
+    # `data` is model_dump() of an extra="allow" ResponseData, so its values are
+    # Any by design (free-form/extra keys); the reportAny here is expected.
     if "snapshot" in data:
-        print(data["snapshot"])
+        print(data["snapshot"])  # pyright: ignore[reportAny]
     elif "text" in data:
-        print(data["text"])
+        print(data["text"])  # pyright: ignore[reportAny]
     elif "result" in data:
-        v = data["result"]
-        print("null" if v is None else json.dumps(v, ensure_ascii=False) if not isinstance(v, str) else v)
+        v = data["result"]  # pyright: ignore[reportAny]
+        print(
+            "null"
+            if v is None
+            else json.dumps(v, ensure_ascii=False)
+            if not isinstance(v, str)
+            else v
+        )
     elif data.get("closed"):
         pass  # silent
     elif "url" in data:
         if "title" in data:
-            print(data["title"])
-        print(data["url"])
+            print(data["title"])  # pyright: ignore[reportAny]
+        print(data["url"])  # pyright: ignore[reportAny]
     elif "title" in data:
-        print(data["title"])
+        print(data["title"])  # pyright: ignore[reportAny]
     elif tabs is None:
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
@@ -417,7 +477,7 @@ def _format_tabs(tabs: list[Tab]) -> str:
     if not tabs:
         return "(no tabs)"
     title_width = max(len(t.get("title") or "") for t in tabs)
-    lines = []
+    lines: list[str] = []
     for t in tabs:
         marker = "*" if t.get("active") else " "
         title = (t.get("title") or "").ljust(title_width)
@@ -426,26 +486,78 @@ def _format_tabs(tabs: list[Tab]) -> str:
 
 
 _APT_DEPS = [
-    "libxcb-shm0", "libx11-xcb1", "libx11-6", "libxcb1", "libxext6",
-    "libxrandr2", "libxcomposite1", "libxcursor1", "libxdamage1", "libxfixes3",
-    "libxi6", "libgtk-3-0", "libpangocairo-1.0-0", "libpango-1.0-0",
-    "libatk1.0-0", "libcairo-gobject2", "libcairo2", "libgdk-pixbuf-2.0-0",
-    "libxrender1", "libfreetype6", "libfontconfig1", "libdbus-1-3",
-    "libnss3", "libnspr4", "libatk-bridge2.0-0", "libdrm2", "libxkbcommon0",
-    "libatspi2.0-0", "libcups2", "libxshmfence1", "libgbm1",
+    "libxcb-shm0",
+    "libx11-xcb1",
+    "libx11-6",
+    "libxcb1",
+    "libxext6",
+    "libxrandr2",
+    "libxcomposite1",
+    "libxcursor1",
+    "libxdamage1",
+    "libxfixes3",
+    "libxi6",
+    "libgtk-3-0",
+    "libpangocairo-1.0-0",
+    "libpango-1.0-0",
+    "libatk1.0-0",
+    "libcairo-gobject2",
+    "libcairo2",
+    "libgdk-pixbuf-2.0-0",
+    "libxrender1",
+    "libfreetype6",
+    "libfontconfig1",
+    "libdbus-1-3",
+    "libnss3",
+    "libnspr4",
+    "libatk-bridge2.0-0",
+    "libdrm2",
+    "libxkbcommon0",
+    "libatspi2.0-0",
+    "libcups2",
+    "libxshmfence1",
+    "libgbm1",
 ]
 
 _DNF_DEPS = [
-    "nss", "nspr", "atk", "at-spi2-atk", "cups-libs", "libdrm",
-    "libXcomposite", "libXdamage", "libXrandr", "mesa-libgbm", "pango",
-    "alsa-lib", "libxkbcommon", "libxcb", "libX11-xcb", "libX11",
-    "libXext", "libXcursor", "libXfixes", "libXi", "gtk3", "cairo-gobject",
+    "nss",
+    "nspr",
+    "atk",
+    "at-spi2-atk",
+    "cups-libs",
+    "libdrm",
+    "libXcomposite",
+    "libXdamage",
+    "libXrandr",
+    "mesa-libgbm",
+    "pango",
+    "alsa-lib",
+    "libxkbcommon",
+    "libxcb",
+    "libX11-xcb",
+    "libX11",
+    "libXext",
+    "libXcursor",
+    "libXfixes",
+    "libXi",
+    "gtk3",
+    "cairo-gobject",
 ]
 
 _YUM_DEPS = [
-    "nss", "nspr", "atk", "at-spi2-atk", "cups-libs", "libdrm",
-    "libXcomposite", "libXdamage", "libXrandr", "mesa-libgbm", "pango",
-    "alsa-lib", "libxkbcommon",
+    "nss",
+    "nspr",
+    "atk",
+    "at-spi2-atk",
+    "cups-libs",
+    "libdrm",
+    "libXcomposite",
+    "libXdamage",
+    "libXrandr",
+    "mesa-libgbm",
+    "pango",
+    "alsa-lib",
+    "libxkbcommon",
 ]
 
 
@@ -463,21 +575,28 @@ def _install_system_deps() -> None:
     import shutil
 
     if platform.system() != "Linux":
-        print("[camoufox-cli] System dependencies are only needed on Linux, skipping.", file=sys.stderr)
+        print(
+            "[camoufox-cli] System dependencies are only needed on Linux, skipping.",
+            file=sys.stderr,
+        )
         return
 
     print("[camoufox-cli] Installing system dependencies...", file=sys.stderr)
 
     if shutil.which("apt-get"):
         deps = [*_APT_DEPS, _resolve_apt_libasound()]
-        subprocess.run(["sudo", "apt-get", "update", "-y"], check=True)
-        subprocess.run(["sudo", "apt-get", "install", "-y", *deps], check=True)
+        _ = subprocess.run(["sudo", "apt-get", "update", "-y"], check=True)
+        _ = subprocess.run(["sudo", "apt-get", "install", "-y", *deps], check=True)
     elif shutil.which("dnf"):
-        subprocess.run(["sudo", "dnf", "install", "-y", *_DNF_DEPS], check=True)
+        _ = subprocess.run(["sudo", "dnf", "install", "-y", *_DNF_DEPS], check=True)
     elif shutil.which("yum"):
-        subprocess.run(["sudo", "yum", "install", "-y", *_YUM_DEPS], check=True)
+        _ = subprocess.run(["sudo", "yum", "install", "-y", *_YUM_DEPS], check=True)
     else:
-        print("[camoufox-cli] Could not detect a supported package manager (apt-get, dnf, yum).", file=sys.stderr)
+        print(
+            "[camoufox-cli] Could not detect a supported package manager "
+            + "(apt-get, dnf, yum).",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     print("[camoufox-cli] System dependencies installed.", file=sys.stderr)
@@ -489,12 +608,15 @@ def main():
 
     # Resolve default persistent path
     if flags.persistent == "":
-        flags.persistent = os.path.expanduser(f"~/.camoufox-cli/profiles/{flags.session}")
+        flags.persistent = os.path.expanduser(
+            f"~/.camoufox-cli/profiles/{flags.session}"
+        )
 
     # Client-side: install
     if isinstance(command, InstallCommand):
         print("[camoufox-cli] Downloading browser...", file=sys.stderr)
         from camoufox.pkgman import CamoufoxFetcher
+
         fetcher = CamoufoxFetcher()
         fetcher.install()
         print("[camoufox-cli] Browser installed.", file=sys.stderr)
@@ -524,13 +646,21 @@ def main():
         for session in sessions:
             sock_path = get_socket_path(session)
             try:
-                send_command(sock_path, close_cmd)
+                _ = send_command(sock_path, close_cmd)
             except Exception as e:
                 print(f"Failed to close session {session}: {e}", file=sys.stderr)
         return
 
     # Ensure daemon is running
-    ensure_daemon(flags.session, flags.headed, flags.timeout, flags.persistent, flags.proxy, flags.geoip, flags.locale)
+    ensure_daemon(
+        flags.session,
+        flags.headed,
+        flags.timeout,
+        flags.persistent,
+        flags.proxy,
+        flags.geoip,
+        flags.locale,
+    )
 
     sock_path = get_socket_path(flags.session)
 
@@ -544,18 +674,21 @@ def main():
         except ResponseError as e:
             # Command was already delivered; the daemon may have executed it.
             # Retrying would re-run a possibly non-idempotent action.
-            print(
-                f"Error: command sent but reply failed ({e}); not retrying to "
-                f"avoid re-running the action.",
-                file=sys.stderr,
+            msg = (
+                f"Error: command sent but reply failed ({e}); "
+                + "not retrying to avoid re-running the action."
             )
+            print(msg, file=sys.stderr)
             sys.exit(1)
         except Exception as e:
             last_err = str(e)
             if attempt < 4:
                 time.sleep(0.2 * (attempt + 1))
 
-    print(f"Error: Failed to connect to daemon after 5 attempts: {last_err}", file=sys.stderr)
+    print(
+        f"Error: Failed to connect to daemon after 5 attempts: {last_err}",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 
@@ -610,7 +743,7 @@ Flags:
   --headed             Show browser window
   --timeout <secs>     Daemon idle timeout (default: 1800)
   --json               Output as JSON
-  --persistent [path]  Use persistent browser profile (default: ~/.camoufox-cli/profiles/<session>)
+  --persistent [path]  Persistent profile (default: ~/.camoufox-cli/profiles/<session>)
   --proxy <url>        Proxy server (e.g. http://host:port or https://host:443)
   --no-geoip           Disable automatic GeoIP spoofing (auto-enabled with --proxy)
   --locale <tag>       Force browser locale (e.g. "en-US" or "en-US,zh-CN")"""

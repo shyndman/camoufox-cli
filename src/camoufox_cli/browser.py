@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 from camoufox.sync_api import Camoufox
@@ -19,24 +20,31 @@ def _ensure_browser_installed() -> None:
     """Check that the Camoufox browser binary is installed, raise if not."""
     try:
         from camoufox.pkgman import get_path
-        get_path("camoufox")
+
+        _ = get_path("camoufox")
     except Exception:
         raise RuntimeError(
             "Browser not found. Run `camoufox-cli install` to download it."
-        )
+        ) from None
 
 
 class BrowserManager:
-    def __init__(self, persistent: str | None = None, proxy: str | None = None, geoip: bool = True, locale: str | None = None):
+    def __init__(
+        self,
+        persistent: str | None = None,
+        proxy: str | None = None,
+        geoip: bool = True,
+        locale: str | None = None,
+    ):
         self._camoufox: Camoufox | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
-        self.refs = RefRegistry()
+        self.refs: RefRegistry = RefRegistry()
         self._headless: bool = True
-        self._persistent = persistent
-        self._proxy = proxy
-        self._geoip = geoip
-        self._locale = locale
+        self._persistent: str | None = persistent
+        self._proxy: str | None = proxy
+        self._geoip: bool = geoip
+        self._locale: str | None = locale
         # Camoufox spoofs history API for anti-fingerprinting,
         # so we track navigation history ourselves.
         self._history: list[str] = []
@@ -80,7 +88,7 @@ class BrowserManager:
         self._camoufox = Camoufox(**kwargs)
         result = self._camoufox.__enter__()
 
-        if self._persistent:
+        if isinstance(result, BrowserContext):
             # persistent_context returns BrowserContext directly
             self._context = result
             pages = self._context.pages
@@ -104,12 +112,14 @@ class BrowserManager:
         ctx = self.get_context()
         tabs: list[Tab] = []
         for i, p in enumerate(ctx.pages):
-            tabs.append({
-                "index": i,
-                "url": p.url,
-                "title": p.title(),
-                "active": p is self._page,
-            })
+            tabs.append(
+                {
+                    "index": i,
+                    "url": p.url,
+                    "title": p.title(),
+                    "active": p is self._page,
+                }
+            )
         return tabs
 
     def switch_to_tab(self, index: int) -> Page:
@@ -125,7 +135,9 @@ class BrowserManager:
         ctx = self.get_context()
         pages = ctx.pages
         if len(pages) <= 1:
-            raise RuntimeError("Cannot close the last tab. Use 'close' to shut down the browser.")
+            raise RuntimeError(
+                "Cannot close the last tab. Use 'close' to shut down the browser."
+            )
         current = self._page
         if current in pages:
             # Switch to a neighbor, then close the active tab.
@@ -143,7 +155,7 @@ class BrowserManager:
     def push_history(self, url: str) -> None:
         """Record a URL in our navigation history."""
         # Truncate forward history when navigating to a new page
-        self._history = self._history[:self._history_index + 1]
+        self._history = self._history[: self._history_index + 1]
         self._history.append(url)
         # Cap history to avoid unbounded growth in long-lived daemons.
         if len(self._history) > _MAX_HISTORY:
@@ -156,7 +168,7 @@ class BrowserManager:
             return None
         self._history_index -= 1
         url = self._history[self._history_index]
-        self.get_page().goto(url, wait_until="domcontentloaded")
+        _ = self.get_page().goto(url, wait_until="domcontentloaded")
         return url
 
     def go_forward(self) -> str | None:
@@ -165,15 +177,13 @@ class BrowserManager:
             return None
         self._history_index += 1
         url = self._history[self._history_index]
-        self.get_page().goto(url, wait_until="domcontentloaded")
+        _ = self.get_page().goto(url, wait_until="domcontentloaded")
         return url
 
     def close(self) -> None:
         if self._camoufox is not None:
-            try:
-                self._camoufox.__exit__(None, None, None)
-            except Exception:
-                pass
+            with contextlib.suppress(Exception):
+                _ = self._camoufox.__exit__(None, None, None)
             self._camoufox = None
             self._context = None
             self._page = None

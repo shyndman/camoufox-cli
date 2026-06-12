@@ -1,11 +1,13 @@
 """Tests for command dispatch and execution logic."""
 
 import os
+from pathlib import Path
 
 import pytest
 
 from camoufox_cli.browser import BrowserManager
 from camoufox_cli.commands import execute
+from camoufox_cli.models import OkResponse
 
 FIXTURE_URL = "file://" + os.path.join(os.path.dirname(__file__), "fixture.html")
 
@@ -13,11 +15,15 @@ FIXTURE_URL = "file://" + os.path.join(os.path.dirname(__file__), "fixture.html"
 class TestDispatch:
     """Test command dispatch without browser (error paths)."""
 
+    manager: BrowserManager = BrowserManager()
+
     def setup_method(self):
         self.manager = BrowserManager()
 
     def test_unknown_action(self):
-        resp = execute(self.manager, {"id": "r1", "action": "nonexistent", "params": {}})
+        resp = execute(
+            self.manager, {"id": "r1", "action": "nonexistent", "params": {}}
+        )
         assert resp.success is False
         assert "Unknown action" in resp.error
 
@@ -37,6 +43,8 @@ class TestDispatch:
 
 class TestCommandValidation:
     """Test parameter validation without launching browser."""
+
+    manager: BrowserManager = BrowserManager()
 
     def setup_method(self):
         self.manager = BrowserManager()
@@ -86,7 +94,7 @@ class TestCommandValidation:
         assert resp.success is False
 
     def test_wait_missing_params(self):
-        """wait with no params fails (either param validation or browser-not-launched)."""
+        """wait with no params fails (param validation or no browser)."""
         resp = execute(self.manager, {"id": "r1", "action": "wait", "params": {}})
         assert resp.success is False
 
@@ -102,6 +110,8 @@ class TestCommandValidation:
 
 class TestBrowserNotLaunched:
     """Test commands that require browser when none is running."""
+
+    manager: BrowserManager = BrowserManager()
 
     def setup_method(self):
         self.manager = BrowserManager()
@@ -124,7 +134,10 @@ class TestBrowserNotLaunched:
         assert resp.success is False
 
     def test_scroll_fails(self):
-        resp = execute(self.manager, {"id": "r1", "action": "scroll", "params": {"direction": "down"}})
+        resp = execute(
+            self.manager,
+            {"id": "r1", "action": "scroll", "params": {"direction": "down"}},
+        )
         assert resp.success is False
 
     def test_close_succeeds(self):
@@ -140,6 +153,8 @@ class TestBrowserIntegration:
     Mark with 'integration' to allow skipping in CI.
     """
 
+    manager: BrowserManager = BrowserManager()
+
     @pytest.fixture(autouse=True)
     def setup_browser(self):
         self.manager = BrowserManager()
@@ -148,205 +163,339 @@ class TestBrowserIntegration:
 
     @pytest.mark.integration
     def test_open_and_navigate(self):
-        resp = execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        assert resp.success is True
+        resp = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
+        assert resp.data.url is not None
         assert "example.com" in resp.data.url
         assert resp.data.title != ""
 
     @pytest.mark.integration
     def test_url_after_open(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         resp = execute(self.manager, {"id": "r2", "action": "url", "params": {}})
-        assert resp.success is True
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
+        assert resp.data.url is not None
         assert "example.com" in resp.data.url
 
     @pytest.mark.integration
     def test_title_after_open(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         resp = execute(self.manager, {"id": "r2", "action": "title", "params": {}})
-        assert resp.success is True
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
+        assert resp.data.title is not None
         assert "Example" in resp.data.title
 
     @pytest.mark.integration
     def test_snapshot(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         resp = execute(self.manager, {"id": "r2", "action": "snapshot", "params": {}})
-        assert resp.success is True
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
+        assert resp.data.snapshot is not None
         assert "[ref=e" in resp.data.snapshot
 
     @pytest.mark.integration
     def test_snapshot_interactive(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        resp = execute(self.manager, {"id": "r2", "action": "snapshot", "params": {"interactive": True}})
-        assert resp.success is True
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        resp = execute(
+            self.manager,
+            {"id": "r2", "action": "snapshot", "params": {"interactive": True}},
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         snapshot = resp.data.snapshot
+        assert snapshot is not None
         assert "link" in snapshot
 
     @pytest.mark.integration
     def test_click_link(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         # Take snapshot to build refs
-        execute(self.manager, {"id": "r2", "action": "snapshot", "params": {"interactive": True}})
+        _ = execute(
+            self.manager,
+            {"id": "r2", "action": "snapshot", "params": {"interactive": True}},
+        )
         # Find a link ref and click it
-        resp = execute(self.manager, {"id": "r3", "action": "click", "params": {"ref": "@e1"}})
+        resp = execute(
+            self.manager, {"id": "r3", "action": "click", "params": {"ref": "@e1"}}
+        )
         assert resp.success is True
 
     @pytest.mark.integration
     def test_click_invalid_ref(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        resp = execute(self.manager, {"id": "r2", "action": "click", "params": {"ref": "@e999"}})
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        resp = execute(
+            self.manager, {"id": "r2", "action": "click", "params": {"ref": "@e999"}}
+        )
         assert resp.success is False
         assert "not found" in resp.error.lower()
 
     @pytest.mark.integration
     def test_eval(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        resp = execute(self.manager, {"id": "r2", "action": "eval", "params": {"expression": "1 + 1"}})
-        assert resp.success is True
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        resp = execute(
+            self.manager,
+            {"id": "r2", "action": "eval", "params": {"expression": "1 + 1"}},
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         assert resp.data.result == 2
 
     @pytest.mark.integration
     def test_eval_document_title(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        resp = execute(self.manager, {"id": "r2", "action": "eval", "params": {"expression": "document.title"}})
-        assert resp.success is True
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        resp = execute(
+            self.manager,
+            {"id": "r2", "action": "eval", "params": {"expression": "document.title"}},
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
+        assert isinstance(resp.data.result, str)
         assert "Example" in resp.data.result
 
     @pytest.mark.integration
     def test_screenshot_base64(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         resp = execute(self.manager, {"id": "r2", "action": "screenshot", "params": {}})
-        assert resp.success is True
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         assert resp.data.base64 is not None
         assert len(resp.data.base64) > 100
 
     @pytest.mark.integration
-    def test_screenshot_to_file(self, tmp_path):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+    def test_screenshot_to_file(self, tmp_path: Path):
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         path = str(tmp_path / "test.png")
-        resp = execute(self.manager, {"id": "r2", "action": "screenshot", "params": {"path": path}})
+        resp = execute(
+            self.manager, {"id": "r2", "action": "screenshot", "params": {"path": path}}
+        )
         assert resp.success is True
         import os
+
         assert os.path.exists(path)
         assert os.path.getsize(path) > 100
 
     @pytest.mark.integration
     def test_scroll(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        resp = execute(self.manager, {"id": "r2", "action": "scroll", "params": {"direction": "down", "amount": 200}})
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        resp = execute(
+            self.manager,
+            {
+                "id": "r2",
+                "action": "scroll",
+                "params": {"direction": "down", "amount": 200},
+            },
+        )
         assert resp.success is True
 
     @pytest.mark.integration
     def test_wait_ms(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        resp = execute(self.manager, {"id": "r2", "action": "wait", "params": {"ms": 100}})
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        resp = execute(
+            self.manager, {"id": "r2", "action": "wait", "params": {"ms": 100}}
+        )
         assert resp.success is True
 
     @pytest.mark.integration
     def test_back_forward_history(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        execute(self.manager, {
-            "id": "r2", "action": "open",
-            "params": {"url": "https://www.iana.org/domains/reserved", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        _ = execute(
+            self.manager,
+            {
+                "id": "r2",
+                "action": "open",
+                "params": {
+                    "url": "https://www.iana.org/domains/reserved",
+                    "headless": True,
+                },
+            },
+        )
         # Go back
         resp = execute(self.manager, {"id": "r3", "action": "back", "params": {}})
-        assert resp.success is True
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
+        assert resp.data.url is not None
         assert "example.com" in resp.data.url
         # Go forward
         resp = execute(self.manager, {"id": "r4", "action": "forward", "params": {}})
-        assert resp.success is True
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
+        assert resp.data.url is not None
         assert "iana.org" in resp.data.url
 
     @pytest.mark.integration
     def test_back_at_start(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         resp = execute(self.manager, {"id": "r2", "action": "back", "params": {}})
         assert resp.success is False
         assert "no previous" in resp.error.lower()
 
     @pytest.mark.integration
     def test_reload(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         resp = execute(self.manager, {"id": "r2", "action": "reload", "params": {}})
         assert resp.success is True
 
     @pytest.mark.integration
     def test_tabs(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         resp = execute(self.manager, {"id": "r2", "action": "tabs", "params": {}})
-        assert resp.success is True
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         tabs = resp.data.tabs
+        assert tabs is not None
         assert len(tabs) >= 1
         assert tabs[0]["active"] is True
 
     @pytest.mark.integration
     def test_cookies_list(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        resp = execute(self.manager, {"id": "r2", "action": "cookies", "params": {"op": "list"}})
-        assert resp.success is True
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        resp = execute(
+            self.manager, {"id": "r2", "action": "cookies", "params": {"op": "list"}}
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         assert resp.data.cookies is not None
 
     @pytest.mark.integration
     def test_close(self):
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         resp = execute(self.manager, {"id": "r2", "action": "close", "params": {}})
         assert resp.success is True
         assert self.manager.is_running is False
@@ -354,29 +503,45 @@ class TestBrowserIntegration:
     @pytest.mark.integration
     def test_reopen_after_close(self):
         """Test that browser can be relaunched after close."""
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        execute(self.manager, {"id": "r2", "action": "close", "params": {}})
-        resp = execute(self.manager, {
-            "id": "r3", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        _ = execute(self.manager, {"id": "r2", "action": "close", "params": {}})
+        resp = execute(
+            self.manager,
+            {
+                "id": "r3",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         assert resp.success is True
 
     @pytest.mark.integration
     def test_history_resets_after_close(self):
         """After close + reopen, back should fail (history cleared)."""
-        execute(self.manager, {
-            "id": "r1", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
-        execute(self.manager, {"id": "r2", "action": "close", "params": {}})
-        execute(self.manager, {
-            "id": "r3", "action": "open",
-            "params": {"url": "https://example.com", "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
+        _ = execute(self.manager, {"id": "r2", "action": "close", "params": {}})
+        _ = execute(
+            self.manager,
+            {
+                "id": "r3",
+                "action": "open",
+                "params": {"url": "https://example.com", "headless": True},
+            },
+        )
         resp = execute(self.manager, {"id": "r4", "action": "back", "params": {}})
         assert resp.success is False
 
@@ -384,169 +549,281 @@ class TestBrowserIntegration:
 class TestFixtureIntegration:
     """Integration tests using local HTML fixture (no network needed)."""
 
+    manager: BrowserManager = BrowserManager()
+
     @pytest.fixture(autouse=True)
     def setup_browser(self):
         self.manager = BrowserManager()
-        execute(self.manager, {
-            "id": "r0", "action": "open",
-            "params": {"url": FIXTURE_URL, "headless": True},
-        })
+        _ = execute(
+            self.manager,
+            {
+                "id": "r0",
+                "action": "open",
+                "params": {"url": FIXTURE_URL, "headless": True},
+            },
+        )
         yield
         self.manager.close()
 
     @pytest.mark.integration
     def test_fill(self):
-        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        _ = execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
         # Find the textbox ref
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "textbox")
-        resp = execute(self.manager, {
-            "id": "r2", "action": "fill",
-            "params": {"ref": f"@{entry.ref}", "text": "Alice"},
-        })
+        entry = next(
+            e for e in self.manager.refs._entries.values() if e.role == "textbox"
+        )
+        resp = execute(
+            self.manager,
+            {
+                "id": "r2",
+                "action": "fill",
+                "params": {"ref": f"@{entry.ref}", "text": "Alice"},
+            },
+        )
         assert resp.success is True
         # Verify value was set
-        resp = execute(self.manager, {
-            "id": "r3", "action": "eval",
-            "params": {"expression": "document.getElementById('name').value"},
-        })
+        resp = execute(
+            self.manager,
+            {
+                "id": "r3",
+                "action": "eval",
+                "params": {"expression": "document.getElementById('name').value"},
+            },
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         assert resp.data.result == "Alice"
 
     @pytest.mark.integration
     def test_type(self):
-        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "textbox")
-        resp = execute(self.manager, {
-            "id": "r2", "action": "type",
-            "params": {"ref": f"@{entry.ref}", "text": "Bob"},
-        })
+        _ = execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(
+            e for e in self.manager.refs._entries.values() if e.role == "textbox"
+        )
+        resp = execute(
+            self.manager,
+            {
+                "id": "r2",
+                "action": "type",
+                "params": {"ref": f"@{entry.ref}", "text": "Bob"},
+            },
+        )
         assert resp.success is True
 
     @pytest.mark.integration
     def test_select(self):
-        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "combobox")
-        resp = execute(self.manager, {
-            "id": "r2", "action": "select",
-            "params": {"ref": f"@{entry.ref}", "value": "Blue"},
-        })
+        _ = execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(
+            e for e in self.manager.refs._entries.values() if e.role == "combobox"
+        )
+        resp = execute(
+            self.manager,
+            {
+                "id": "r2",
+                "action": "select",
+                "params": {"ref": f"@{entry.ref}", "value": "Blue"},
+            },
+        )
         assert resp.success is True
-        resp = execute(self.manager, {
-            "id": "r3", "action": "eval",
-            "params": {"expression": "document.getElementById('color').value"},
-        })
+        resp = execute(
+            self.manager,
+            {
+                "id": "r3",
+                "action": "eval",
+                "params": {"expression": "document.getElementById('color').value"},
+            },
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         assert resp.data.result == "blue"
 
     @pytest.mark.integration
     def test_check_toggle(self):
-        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "checkbox")
+        _ = execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(
+            e for e in self.manager.refs._entries.values() if e.role == "checkbox"
+        )
         ref = f"@{entry.ref}"
         # Check
-        resp = execute(self.manager, {"id": "r2", "action": "check", "params": {"ref": ref}})
+        resp = execute(
+            self.manager, {"id": "r2", "action": "check", "params": {"ref": ref}}
+        )
         assert resp.success is True
-        resp = execute(self.manager, {
-            "id": "r3", "action": "eval",
-            "params": {"expression": "document.getElementById('agree').checked"},
-        })
+        resp = execute(
+            self.manager,
+            {
+                "id": "r3",
+                "action": "eval",
+                "params": {"expression": "document.getElementById('agree').checked"},
+            },
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         assert resp.data.result is True
         # Uncheck
-        resp = execute(self.manager, {"id": "r4", "action": "check", "params": {"ref": ref}})
+        resp = execute(
+            self.manager, {"id": "r4", "action": "check", "params": {"ref": ref}}
+        )
         assert resp.success is True
-        resp = execute(self.manager, {
-            "id": "r5", "action": "eval",
-            "params": {"expression": "document.getElementById('agree').checked"},
-        })
+        resp = execute(
+            self.manager,
+            {
+                "id": "r5",
+                "action": "eval",
+                "params": {"expression": "document.getElementById('agree').checked"},
+            },
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         assert resp.data.result is False
 
     @pytest.mark.integration
     def test_hover(self):
-        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button")
-        resp = execute(self.manager, {
-            "id": "r2", "action": "hover",
-            "params": {"ref": f"@{entry.ref}"},
-        })
+        _ = execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(
+            e for e in self.manager.refs._entries.values() if e.role == "button"
+        )
+        resp = execute(
+            self.manager,
+            {
+                "id": "r2",
+                "action": "hover",
+                "params": {"ref": f"@{entry.ref}"},
+            },
+        )
         assert resp.success is True
 
     @pytest.mark.integration
     def test_click_button(self):
         """Click a non-link button and verify side effect."""
-        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "button")
-        resp = execute(self.manager, {
-            "id": "r2", "action": "click",
-            "params": {"ref": f"@{entry.ref}"},
-        })
+        _ = execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(
+            e for e in self.manager.refs._entries.values() if e.role == "button"
+        )
+        resp = execute(
+            self.manager,
+            {
+                "id": "r2",
+                "action": "click",
+                "params": {"ref": f"@{entry.ref}"},
+            },
+        )
         assert resp.success is True
-        resp = execute(self.manager, {
-            "id": "r3", "action": "eval",
-            "params": {"expression": "document.getElementById('output').textContent"},
-        })
+        resp = execute(
+            self.manager,
+            {
+                "id": "r3",
+                "action": "eval",
+                "params": {
+                    "expression": "document.getElementById('output').textContent"
+                },
+            },
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         assert resp.data.result == "clicked"
 
     @pytest.mark.integration
     def test_press(self):
-        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "textbox")
+        _ = execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(
+            e for e in self.manager.refs._entries.values() if e.role == "textbox"
+        )
         # Focus the textbox first
-        execute(self.manager, {"id": "r2", "action": "click", "params": {"ref": f"@{entry.ref}"}})
-        resp = execute(self.manager, {"id": "r3", "action": "press", "params": {"key": "Tab"}})
+        _ = execute(
+            self.manager,
+            {"id": "r2", "action": "click", "params": {"ref": f"@{entry.ref}"}},
+        )
+        resp = execute(
+            self.manager, {"id": "r3", "action": "press", "params": {"key": "Tab"}}
+        )
         assert resp.success is True
 
     @pytest.mark.integration
     def test_text_by_ref(self):
-        execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
-        entry = next(e for e in self.manager.refs._entries.values() if e.role == "heading")
-        resp = execute(self.manager, {
-            "id": "r2", "action": "text",
-            "params": {"target": f"@{entry.ref}"},
-        })
-        assert resp.success is True
+        _ = execute(self.manager, {"id": "r1", "action": "snapshot", "params": {}})
+        entry = next(
+            e for e in self.manager.refs._entries.values() if e.role == "heading"
+        )
+        resp = execute(
+            self.manager,
+            {
+                "id": "r2",
+                "action": "text",
+                "params": {"target": f"@{entry.ref}"},
+            },
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
+        assert resp.data.text is not None
         assert "Test Page" in resp.data.text
 
     @pytest.mark.integration
     def test_text_by_selector(self):
-        resp = execute(self.manager, {
-            "id": "r1", "action": "text",
-            "params": {"target": "#output"},
-        })
-        assert resp.success is True
+        resp = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "text",
+                "params": {"target": "#output"},
+            },
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
         assert resp.data.text == "ready"
 
     @pytest.mark.integration
-    def test_cookies_export_import(self, tmp_path):
+    def test_cookies_export_import(self, tmp_path: Path):
         cookie_file = str(tmp_path / "cookies.json")
         # Export
-        resp = execute(self.manager, {
-            "id": "r1", "action": "cookies",
-            "params": {"op": "export", "path": cookie_file},
-        })
+        resp = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "cookies",
+                "params": {"op": "export", "path": cookie_file},
+            },
+        )
         assert resp.success is True
         assert os.path.exists(cookie_file)
         # Import
-        resp = execute(self.manager, {
-            "id": "r2", "action": "cookies",
-            "params": {"op": "import", "path": cookie_file},
-        })
+        resp = execute(
+            self.manager,
+            {
+                "id": "r2",
+                "action": "cookies",
+                "params": {"op": "import", "path": cookie_file},
+            },
+        )
         assert resp.success is True
 
     @pytest.mark.integration
     def test_snapshot_scoped(self):
-        resp = execute(self.manager, {
-            "id": "r1", "action": "snapshot",
-            "params": {"selector": "form"},
-        })
-        assert resp.success is True
+        resp = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "snapshot",
+                "params": {"selector": "form"},
+            },
+        )
+        assert isinstance(resp, OkResponse)
+        assert resp.data is not None
+        assert resp.data.snapshot is not None
         assert "textbox" in resp.data.snapshot
         # heading is outside form, should not appear
         assert "Test Page" not in resp.data.snapshot
 
     @pytest.mark.integration
     def test_wait_selector(self):
-        resp = execute(self.manager, {
-            "id": "r1", "action": "wait",
-            "params": {"selector": "#output"},
-        })
+        resp = execute(
+            self.manager,
+            {
+                "id": "r1",
+                "action": "wait",
+                "params": {"selector": "#output"},
+            },
+        )
         assert resp.success is True
 
     @pytest.mark.integration

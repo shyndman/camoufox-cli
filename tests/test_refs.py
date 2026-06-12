@@ -14,7 +14,7 @@ class TestBuildFromSnapshot:
 
     def test_assigns_roles_and_names(self):
         registry = RefRegistry()
-        registry.build_from_snapshot('- link "Home"\n- button "OK"')
+        _ = registry.build_from_snapshot('- link "Home"\n- button "OK"')
         entry = registry.resolve("e1")
         assert entry is not None
         assert entry.role == "link"
@@ -26,7 +26,7 @@ class TestBuildFromSnapshot:
 
     def test_unnamed_elements(self):
         registry = RefRegistry()
-        registry.build_from_snapshot("- img\n- link")
+        _ = registry.build_from_snapshot("- img\n- link")
         entry = registry.resolve("e1")
         assert entry is not None
         assert entry.role == "img"
@@ -42,7 +42,7 @@ class TestBuildFromSnapshot:
 
     def test_nth_disambiguation(self):
         registry = RefRegistry()
-        registry.build_from_snapshot('- link "Home"\n- link "Home"')
+        _ = registry.build_from_snapshot('- link "Home"\n- link "Home"')
         e1 = registry.resolve("e1")
         e2 = registry.resolve("e2")
         assert e1 is not None and e2 is not None
@@ -63,38 +63,40 @@ class TestBuildFromSnapshot:
 
     def test_clears_previous_entries(self):
         registry = RefRegistry()
-        registry.build_from_snapshot('- link "A"')
+        _ = registry.build_from_snapshot('- link "A"')
         assert len(registry) == 1
-        registry.build_from_snapshot('- button "B"\n- button "C"')
+        _ = registry.build_from_snapshot('- button "B"\n- button "C"')
         assert len(registry) == 2
-        assert registry.resolve("e1").role == "button"
+        entry = registry.resolve("e1")
+        assert entry is not None
+        assert entry.role == "button"
 
     def test_non_matching_lines_preserved(self):
         registry = RefRegistry()
-        result = registry.build_from_snapshot("plain text line\n- link \"A\"")
+        result = registry.build_from_snapshot('plain text line\n- link "A"')
         assert "plain text line" in result
         assert "[ref=e1]" in result
 
     def test_empty_snapshot(self):
         registry = RefRegistry()
-        result = registry.build_from_snapshot("")
+        _ = registry.build_from_snapshot("")
         assert len(registry) == 0
 
 
 class TestResolve:
     def test_with_at_prefix(self):
         registry = RefRegistry()
-        registry.build_from_snapshot('- link "Test"')
+        _ = registry.build_from_snapshot('- link "Test"')
         assert registry.resolve("@e1") is not None
 
     def test_without_at_prefix(self):
         registry = RefRegistry()
-        registry.build_from_snapshot('- link "Test"')
+        _ = registry.build_from_snapshot('- link "Test"')
         assert registry.resolve("e1") is not None
 
     def test_nonexistent_ref(self):
         registry = RefRegistry()
-        registry.build_from_snapshot('- link "Test"')
+        _ = registry.build_from_snapshot('- link "Test"')
         assert registry.resolve("e999") is None
 
     def test_empty_registry(self):
@@ -104,7 +106,15 @@ class TestResolve:
 
 class TestInteractiveRoles:
     def test_common_interactive_roles(self):
-        for role in ("link", "button", "textbox", "checkbox", "radio", "combobox", "tab"):
+        for role in (
+            "link",
+            "button",
+            "textbox",
+            "checkbox",
+            "radio",
+            "combobox",
+            "tab",
+        ):
             assert role in INTERACTIVE_ROLES
 
     def test_non_interactive_roles(self):

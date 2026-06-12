@@ -5,8 +5,11 @@ from __future__ import annotations
 import base64
 import io
 import json
+from typing import cast, get_args
 
-from pydantic import ValidationError
+from playwright._impl._api_structures import AriaRole, SetCookieParam
+from playwright.sync_api import Locator
+from pydantic import JsonValue, ValidationError
 
 from .browser import BrowserManager
 from .models import (
@@ -57,12 +60,35 @@ from .protocol import error_response, ok_response
 
 # Actions the daemon can execute. ``install`` / ``sessions`` are valid commands
 # but handled CLI-side; if they reach the daemon they're treated as unknown.
-_DAEMON_ACTIONS = frozenset({
-    "open", "back", "forward", "reload", "url", "title", "close",
-    "snapshot", "click", "fill", "type", "select", "check", "hover", "press",
-    "text", "eval", "screenshot", "pdf", "scroll", "wait",
-    "tabs", "switch", "close-tab", "cookies",
-})
+_DAEMON_ACTIONS = frozenset(
+    {
+        "open",
+        "back",
+        "forward",
+        "reload",
+        "url",
+        "title",
+        "close",
+        "snapshot",
+        "click",
+        "fill",
+        "type",
+        "select",
+        "check",
+        "hover",
+        "press",
+        "text",
+        "eval",
+        "screenshot",
+        "pdf",
+        "scroll",
+        "wait",
+        "tabs",
+        "switch",
+        "close-tab",
+        "cookies",
+    }
+)
 
 
 def execute(
@@ -161,22 +187,44 @@ def _dispatch(manager: BrowserManager, command: Command) -> Response:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _resolve_ref(manager: BrowserManager, ref_str: str):
+# Valid ARIA roles Playwright's get_by_role accepts, taken from its own
+# AriaRole Literal so we stay in lockstep with the installed Playwright.
+_ARIA_ROLES: frozenset[str] = frozenset(get_args(AriaRole))
+
+
+def _validate_role(role: str) -> AriaRole:
+    """Narrow a snapshot-derived role string to Playwright's AriaRole.
+
+    Refs carry roles parsed out of an aria snapshot (plain ``str``), but
+    ``get_by_role`` only accepts a fixed Literal. Validate here so an
+    unexpected role fails loudly instead of silently mismatching.
+    """
+    if role not in _ARIA_ROLES:
+        raise ValueError(f"Unknown ARIA role: {role!r}")
+    return cast(AriaRole, role)
+
+
+def _resolve_ref(manager: BrowserManager, ref_str: str) -> Locator:
     """Resolve a ref string to a locator, or raise."""
     entry = manager.refs.resolve(ref_str)
     if entry is None:
-        raise ValueError(f"Ref @{ref_str.lstrip('@')} not found. Run 'camoufox-cli snapshot' to refresh refs.")
+        raise ValueError(
+            f"Ref @{ref_str.lstrip('@')} not found. "
+            + "Run 'camoufox-cli snapshot' to refresh refs."
+        )
     page = manager.get_page()
+    role = _validate_role(entry.role)
     if entry.name:
-        locator = page.get_by_role(entry.role, name=entry.name, exact=True)  # type: ignore[arg-type]
+        locator = page.get_by_role(role, name=entry.name, exact=True)
     else:
-        locator = page.get_by_role(entry.role)  # type: ignore[arg-type]
+        locator = page.get_by_role(role)
     return locator.nth(entry.nth)
 
 
 # ---------------------------------------------------------------------------
 # Navigation
 # ---------------------------------------------------------------------------
+
 
 def _cmd_open(manager: BrowserManager, cmd_id: str, params: OpenParams) -> Response:
     url = params.url
@@ -188,14 +236,14 @@ def _cmd_open(manager: BrowserManager, cmd_id: str, params: OpenParams) -> Respo
 
     try:
         page = manager.get_page()
-        page.goto(url, wait_until="domcontentloaded")
+        _ = page.goto(url, wait_until="domcontentloaded")
     except Exception as e:
         if "has been closed" in str(e):
             # Browser crashed or was closed externally — relaunch
             manager.close()
             manager.launch(headless=params.headless)
             page = manager.get_page()
-            page.goto(url, wait_until="domcontentloaded")
+            _ = page.goto(url, wait_until="domcontentloaded")
         else:
             raise
 
@@ -221,7 +269,7 @@ def _cmd_forward(manager: BrowserManager, cmd_id: str) -> Response:
 
 def _cmd_reload(manager: BrowserManager, cmd_id: str) -> Response:
     page = manager.get_page()
-    page.goto(page.url, wait_until="domcontentloaded")
+    _ = page.goto(page.url, wait_until="domcontentloaded")
     return ok_response(cmd_id)
 
 
@@ -242,17 +290,23 @@ def _cmd_close(manager: BrowserManager, cmd_id: str) -> Response:
 # Snapshot
 # ---------------------------------------------------------------------------
 
-def _cmd_snapshot(manager: BrowserManager, cmd_id: str, params: SnapshotParams) -> Response:
+
+def _cmd_snapshot(
+    manager: BrowserManager, cmd_id: str, params: SnapshotParams
+) -> Response:
     page = manager.get_page()
     target = page.locator(params.selector) if params.selector else page.locator("body")
     aria_text = target.aria_snapshot()
-    annotated = manager.refs.build_from_snapshot(aria_text, interactive_only=params.interactive)
+    annotated = manager.refs.build_from_snapshot(
+        aria_text, interactive_only=params.interactive
+    )
     return ok_response(cmd_id, {"snapshot": annotated})
 
 
 # ---------------------------------------------------------------------------
 # Interaction
 # ---------------------------------------------------------------------------
+
 
 def _cmd_click(manager: BrowserManager, cmd_id: str, params: RefParams) -> Response:
     if not params.ref:
@@ -267,11 +321,15 @@ def _cmd_click(manager: BrowserManager, cmd_id: str, params: RefParams) -> Respo
     # navigation for plain links, unlike the old page.goto() path which skipped
     # handlers and broke JS/hash/SPA links. Camoufox still silently drops
     # target="_blank" clicks, so those are navigated explicitly via page.goto().
-    blank_href = locator.evaluate(
-        "el => { const a = el.closest('a'); return a && a.target === '_blank' ? a.href : null; }"
+    blank_href = cast(
+        "str | None",
+        locator.evaluate(
+            "el => { const a = el.closest('a'); "
+            + "return a && a.target === '_blank' ? a.href : null; }"
+        ),
     )
     if blank_href:
-        page.goto(blank_href, wait_until="domcontentloaded")
+        _ = page.goto(blank_href, wait_until="domcontentloaded")
     else:
         locator.click(force=True)
 
@@ -298,7 +356,7 @@ def _cmd_type(manager: BrowserManager, cmd_id: str, params: RefTextParams) -> Re
 def _cmd_select(manager: BrowserManager, cmd_id: str, params: SelectParams) -> Response:
     if not params.ref:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    _resolve_ref(manager, params.ref).select_option(label=params.value)
+    _ = _resolve_ref(manager, params.ref).select_option(label=params.value)
     return ok_response(cmd_id)
 
 
@@ -331,6 +389,7 @@ def _cmd_press(manager: BrowserManager, cmd_id: str, params: PressParams) -> Res
 # Data extraction
 # ---------------------------------------------------------------------------
 
+
 def _cmd_text(manager: BrowserManager, cmd_id: str, params: TextParams) -> Response:
     target = params.target
     if not target:
@@ -347,14 +406,16 @@ def _cmd_text(manager: BrowserManager, cmd_id: str, params: TextParams) -> Respo
 def _cmd_eval(manager: BrowserManager, cmd_id: str, params: EvalParams) -> Response:
     if not params.expression:
         return error_response(cmd_id, "Missing 'expression' parameter")
-    result = manager.get_page().evaluate(params.expression)
+    result = cast("JsonValue", manager.get_page().evaluate(params.expression))
     return ok_response(cmd_id, {"result": result})
 
 
-def _cmd_screenshot(manager: BrowserManager, cmd_id: str, params: ScreenshotParams) -> Response:
+def _cmd_screenshot(
+    manager: BrowserManager, cmd_id: str, params: ScreenshotParams
+) -> Response:
     page = manager.get_page()
     if params.path:
-        page.screenshot(path=params.path, full_page=params.full_page)
+        _ = page.screenshot(path=params.path, full_page=params.full_page)
         return ok_response(cmd_id, {"path": params.path})
     else:
         buf = page.screenshot(full_page=params.full_page)
@@ -383,6 +444,7 @@ def _cmd_pdf(manager: BrowserManager, cmd_id: str, params: PathParams) -> Respon
 # Scroll & Wait
 # ---------------------------------------------------------------------------
 
+
 def _cmd_scroll(manager: BrowserManager, cmd_id: str, params: ScrollParams) -> Response:
     amount = -params.amount if params.direction == "up" else params.amount
     manager.get_page().evaluate(f"window.scrollBy(0, {amount})")
@@ -395,13 +457,15 @@ def _cmd_wait(manager: BrowserManager, cmd_id: str, params: WaitParams) -> Respo
     if params.ms is not None:
         page.wait_for_timeout(params.ms)
     elif params.ref:
-        _resolve_ref(manager, params.ref).wait_for()
+        _ = _resolve_ref(manager, params.ref).wait_for()
     elif params.selector:
-        page.wait_for_selector(params.selector)
+        _ = page.wait_for_selector(params.selector)
     elif params.url:
         page.wait_for_url(params.url)
     else:
-        return error_response(cmd_id, "wait requires ms, ref, selector, or url parameter")
+        return error_response(
+            cmd_id, "wait requires ms, ref, selector, or url parameter"
+        )
 
     return ok_response(cmd_id)
 
@@ -410,12 +474,13 @@ def _cmd_wait(manager: BrowserManager, cmd_id: str, params: WaitParams) -> Respo
 # Tab management
 # ---------------------------------------------------------------------------
 
+
 def _cmd_tabs(manager: BrowserManager, cmd_id: str) -> Response:
     return ok_response(cmd_id, {"tabs": manager.get_tabs()})
 
 
 def _cmd_switch(manager: BrowserManager, cmd_id: str, params: SwitchParams) -> Response:
-    manager.switch_to_tab(params.index)
+    _ = manager.switch_to_tab(params.index)
     return ok_response(cmd_id, {"tabs": manager.get_tabs()})
 
 
@@ -428,7 +493,10 @@ def _cmd_close_tab(manager: BrowserManager, cmd_id: str) -> Response:
 # Cookies
 # ---------------------------------------------------------------------------
 
-def _cmd_cookies(manager: BrowserManager, cmd_id: str, params: CookiesParams) -> Response:
+
+def _cmd_cookies(
+    manager: BrowserManager, cmd_id: str, params: CookiesParams
+) -> Response:
     ctx = manager.get_context()
     op = params.op
 
@@ -448,6 +516,10 @@ def _cmd_cookies(manager: BrowserManager, cmd_id: str, params: CookiesParams) ->
         if not params.path:
             return error_response(cmd_id, "Missing 'path' parameter for import")
         with open(params.path) as f:
-            cookies = json.load(f)
-        ctx.add_cookies(cookies)
-        return ok_response(cmd_id, {"count": len(cookies)})
+            loaded = cast("JsonValue", json.load(f))
+        if not isinstance(loaded, list):
+            return error_response(
+                cmd_id, "Cookie import file must contain a JSON array"
+            )
+        ctx.add_cookies(cast("list[SetCookieParam]", loaded))
+        return ok_response(cmd_id, {"count": len(loaded)})

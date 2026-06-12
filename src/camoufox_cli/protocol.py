@@ -7,7 +7,7 @@ constructors the command handlers call.
 
 from __future__ import annotations
 
-import json
+from pydantic import JsonValue, TypeAdapter
 
 from .models import (
     ErrorResponse,
@@ -17,6 +17,12 @@ from .models import (
     response_adapter,
 )
 
+# A command line is a JSON object; parse it through a TypeAdapter so the raw
+# dict is typed (this is a trust boundary — the bytes come off the socket).
+_command_line_adapter: TypeAdapter[dict[str, JsonValue]] = TypeAdapter(
+    dict[str, JsonValue]
+)
+
 
 def parse_command(line: str) -> dict[str, object]:
     """Parse a JSON-line command into a raw dict.
@@ -24,7 +30,10 @@ def parse_command(line: str) -> dict[str, object]:
     Validation into a typed ``Command`` happens in ``commands.execute`` so a
     malformed command becomes a graceful error response rather than a crash.
     """
-    return json.loads(line.strip())
+    parsed: dict[str, JsonValue] = _command_line_adapter.validate_json(line.strip())
+    # Widen values to object for the dict-invariant `execute` boundary.
+    result: dict[str, object] = {key: value for key, value in parsed.items()}
+    return result
 
 
 def serialize_response(response: Response) -> bytes:

@@ -53,6 +53,12 @@ typeCheckingMode = "recommended"
 reportMissingTypeStubs = false
 reportExplicitAny = "error"
 
+# Tests deliberately exercise module-private internals (helpers, registry
+# entries, daemon state, fake injection), so private-usage is expected there.
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+reportPrivateUsage = false
+
 [tool.ruff]
 target-version = "py313"
 

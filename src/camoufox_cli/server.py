@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import socket
 import sys
 import threading
 import time
+from types import FrameType
 
 from .browser import BrowserManager
 from .commands import execute
@@ -16,16 +18,27 @@ from .protocol import parse_command, serialize_response
 
 
 class DaemonServer:
-    def __init__(self, session: str = "default", headless: bool = True, timeout: int = 1800, persistent: str | None = None, proxy: str | None = None, geoip: bool = True, locale: str | None = None):
-        self.session = session
-        self.headless = headless
-        self.timeout = timeout  # idle timeout in seconds
-        self.socket_path = f"/tmp/camoufox-cli-{session}.sock"
-        self.pid_path = f"/tmp/camoufox-cli-{session}.pid"
-        self.manager = BrowserManager(persistent=persistent, proxy=proxy, geoip=geoip, locale=locale)
+    def __init__(
+        self,
+        session: str = "default",
+        headless: bool = True,
+        timeout: int = 1800,
+        persistent: str | None = None,
+        proxy: str | None = None,
+        geoip: bool = True,
+        locale: str | None = None,
+    ):
+        self.session: str = session
+        self.headless: bool = headless
+        self.timeout: int = timeout  # idle timeout in seconds
+        self.socket_path: str = f"/tmp/camoufox-cli-{session}.sock"
+        self.pid_path: str = f"/tmp/camoufox-cli-{session}.pid"
+        self.manager: BrowserManager = BrowserManager(
+            persistent=persistent, proxy=proxy, geoip=geoip, locale=locale
+        )
         self._server_socket: socket.socket | None = None
-        self._last_activity = time.time()
-        self._running = False
+        self._last_activity: float = time.time()
+        self._running: bool = False
         # Signature of the live tab set after the previous command, used to
         # inject the current tab list whenever the set of tabs changes.
         self._last_tab_sig: frozenset[int] | None = None
@@ -40,8 +53,8 @@ class DaemonServer:
         watchdog.start()
 
         # Set up signal handlers
-        signal.signal(signal.SIGTERM, self._handle_signal)
-        signal.signal(signal.SIGINT, self._handle_signal)
+        _ = signal.signal(signal.SIGTERM, self._handle_signal)
+        _ = signal.signal(signal.SIGINT, self._handle_signal)
 
         self._server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
@@ -51,7 +64,7 @@ class DaemonServer:
 
             while self._running:
                 try:
-                    conn, _ = self._server_socket.accept()
+                    conn = self._server_socket.accept()[0]
                 except TimeoutError:
                     continue
                 except OSError:
@@ -119,7 +132,10 @@ class DaemonServer:
         while self._running:
             time.sleep(10)
             if time.time() - self._last_activity > self.timeout:
-                print(f"[camoufox-cli] Idle timeout ({self.timeout}s), shutting down", file=sys.stderr)
+                print(
+                    f"[camoufox-cli] Idle timeout ({self.timeout}s), shutting down",
+                    file=sys.stderr,
+                )
                 self._running = False
                 # Nudge the accept() loop
                 try:
@@ -130,16 +146,15 @@ class DaemonServer:
                     pass
                 break
 
-    def _handle_signal(self, signum, frame):
+    def _handle_signal(self, signum: int, frame: FrameType | None) -> None:
+        del signum, frame
         self._running = False
 
     def _shutdown(self) -> None:
         self.manager.close()
         if self._server_socket:
-            try:
+            with contextlib.suppress(Exception):
                 self._server_socket.close()
-            except Exception:
-                pass
         self._cleanup_files()
 
     def _cleanup_stale(self) -> None:
@@ -159,17 +174,18 @@ class DaemonServer:
                 except (ProcessLookupError, ValueError):
                     pass  # stale pid or corrupt pid file, clean up
                 if alive:
-                    print(f"[camoufox-cli] Daemon already running (pid {pid})", file=sys.stderr)
+                    print(
+                        f"[camoufox-cli] Daemon already running (pid {pid})",
+                        file=sys.stderr,
+                    )
                     sys.exit(1)
             os.unlink(self.socket_path)
 
     def _write_pid(self) -> None:
         with open(self.pid_path, "w") as f:
-            f.write(str(os.getpid()))
+            _ = f.write(str(os.getpid()))
 
     def _cleanup_files(self) -> None:
         for path in (self.socket_path, self.pid_path):
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.unlink(path)
-            except FileNotFoundError:
-                pass

@@ -11,7 +11,8 @@ def parse_proxy_settings(proxy_url: str) -> ProxySettings:
     parsed = urlparse(proxy_url)
     if parsed.scheme not in ("http", "https"):
         raise ValueError(
-            f"Unsupported proxy scheme: {parsed.scheme}. Only http:// and https:// proxies are supported."
+            f"Unsupported proxy scheme: {parsed.scheme}. "
+            + "Only http:// and https:// proxies are supported."
         )
     if not parsed.hostname:
         raise ValueError(

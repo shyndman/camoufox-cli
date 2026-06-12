@@ -17,6 +17,7 @@ import dataclasses
 import datetime
 import random
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from .models import IDENTITY_FILENAME, Config, Geo, Identity
@@ -35,7 +36,9 @@ def _identity_path(persistent_dir: str) -> Path:
 
 
 def _write(path: Path, identity: Identity) -> None:
-    path.write_text(identity.model_dump_json(by_alias=True, exclude_none=True, indent=2))
+    _ = path.write_text(
+        identity.model_dump_json(by_alias=True, exclude_none=True, indent=2)
+    )
 
 
 def load_or_create(
@@ -65,10 +68,13 @@ def load_or_create(
             _write(path, identity)
         return identity
 
-    from browserforge.fingerprints import FingerprintGenerator
+    from browserforge.fingerprints import Fingerprint, FingerprintGenerator
 
     os_ = _host_os()
-    fp = FingerprintGenerator(browser="firefox", os=os_).generate()
+    generator: FingerprintGenerator = FingerprintGenerator(browser="firefox", os=os_)
+    # browserforge's generate() ends in an untyped **header_kwargs, so pyright
+    # treats the method type as partially unknown (return is still Fingerprint).
+    fp: Fingerprint = generator.generate()  # pyright: ignore[reportUnknownMemberType]
 
     config = Config(
         canvas_aa_offset=random.randint(-50, 50),
@@ -77,7 +83,7 @@ def load_or_create(
     )
 
     if proxy and geoip:
-        _merge_geo(config, _geolocate_proxy(proxy))
+        _ = _merge_geo(config, _geolocate_proxy(proxy))
 
     identity = Identity(
         created_at=datetime.datetime.now(datetime.UTC).isoformat(),
@@ -160,10 +166,18 @@ def _rebuild_dataclass(cls: object, value: object) -> object:
     """Reconstruct a nested dataclass tree from a plain dict."""
     if value is None:
         return None
-    if isinstance(cls, type) and dataclasses.is_dataclass(cls) and isinstance(value, dict):
+    if (
+        isinstance(cls, type)
+        and dataclasses.is_dataclass(cls)
+        and isinstance(value, Mapping)
+    ):
         kwargs: dict[str, object] = {}
         for f in dataclasses.fields(cls):
-            kwargs[f.name] = _rebuild_dataclass(f.type, value.get(f.name))
+            field_type: object = f.type
+            # value is an opaque Mapping (browserforge asdict output, no element
+            # types), so .get() is partially unknown — reconstruction is reflective.
+            field_value: object = value.get(f.name)  # pyright: ignore[reportUnknownMemberType]
+            kwargs[f.name] = _rebuild_dataclass(field_type, field_value)
         return cls(**kwargs)
     return value
 

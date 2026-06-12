@@ -34,4 +34,4 @@ class TestParseProxySettings:
 
     def test_socks5_scheme_is_rejected(self):
         with pytest.raises(ValueError, match="Only http:// and https://"):
-            parse_proxy_settings("socks5://host:1080")
+            _ = parse_proxy_settings("socks5://host:1080")

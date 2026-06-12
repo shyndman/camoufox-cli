@@ -393,15 +393,41 @@ class Config(BaseModel):
     disk with ``model_dump(by_alias=True, exclude_none=True)``.
     """
 
-    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True, extra="allow")
+    model_config: ClassVar[ConfigDict] = ConfigDict(
+        populate_by_name=True, extra="allow"
+    )
 
-    canvas_aa_offset: int | None = Field(default=None, validation_alias="canvas:aaOffset", serialization_alias="canvas:aaOffset")
-    canvas_aa_cap_offset: bool | None = Field(default=None, validation_alias="canvas:aaCapOffset", serialization_alias="canvas:aaCapOffset")
-    fonts_spacing_seed: int | None = Field(default=None, validation_alias="fonts:spacing_seed", serialization_alias="fonts:spacing_seed")
+    canvas_aa_offset: int | None = Field(
+        default=None,
+        validation_alias="canvas:aaOffset",
+        serialization_alias="canvas:aaOffset",
+    )
+    canvas_aa_cap_offset: bool | None = Field(
+        default=None,
+        validation_alias="canvas:aaCapOffset",
+        serialization_alias="canvas:aaCapOffset",
+    )
+    fonts_spacing_seed: int | None = Field(
+        default=None,
+        validation_alias="fonts:spacing_seed",
+        serialization_alias="fonts:spacing_seed",
+    )
     timezone: str | None = None
-    geolocation_latitude: float | None = Field(default=None, validation_alias="geolocation:latitude", serialization_alias="geolocation:latitude")
-    geolocation_longitude: float | None = Field(default=None, validation_alias="geolocation:longitude", serialization_alias="geolocation:longitude")
-    geolocation_accuracy: float | None = Field(default=None, validation_alias="geolocation:accuracy", serialization_alias="geolocation:accuracy")
+    geolocation_latitude: float | None = Field(
+        default=None,
+        validation_alias="geolocation:latitude",
+        serialization_alias="geolocation:latitude",
+    )
+    geolocation_longitude: float | None = Field(
+        default=None,
+        validation_alias="geolocation:longitude",
+        serialization_alias="geolocation:longitude",
+    )
+    geolocation_accuracy: float | None = Field(
+        default=None,
+        validation_alias="geolocation:accuracy",
+        serialization_alias="geolocation:accuracy",
+    )
 
 
 class Identity(BaseModel):

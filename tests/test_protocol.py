@@ -11,7 +11,9 @@ from camoufox_cli.protocol import (
 
 class TestParseCommand:
     def test_basic(self):
-        result = parse_command('{"action": "open", "params": {"url": "https://example.com"}}')
+        result = parse_command(
+            '{"action": "open", "params": {"url": "https://example.com"}}'
+        )
         assert result == {"action": "open", "params": {"url": "https://example.com"}}
 
     def test_with_whitespace(self):
@@ -20,12 +22,15 @@ class TestParseCommand:
 
     def test_unicode(self):
         result = parse_command('{"action": "fill", "params": {"text": "你好"}}')
-        assert result["params"]["text"] == "你好"
+        params = result["params"]
+        assert isinstance(params, dict)
+        assert params["text"] == "你好"
 
     def test_invalid_json(self):
         import pytest
-        with pytest.raises(Exception):
-            parse_command("not json")
+
+        with pytest.raises(ValueError):
+            _ = parse_command("not json")
 
 
 class TestSerializeResponse:
