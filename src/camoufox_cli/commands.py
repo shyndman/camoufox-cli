@@ -6,23 +6,155 @@ import base64
 import io
 import json
 
+from pydantic import ValidationError
+
 from .browser import BrowserManager
-from .protocol import ok_response, error_response
+from .models import (
+    BackCommand,
+    CheckCommand,
+    ClickCommand,
+    CloseCommand,
+    CloseTabCommand,
+    Command,
+    CookiesCommand,
+    CookiesParams,
+    EvalCommand,
+    EvalParams,
+    FillCommand,
+    ForwardCommand,
+    HoverCommand,
+    OpenCommand,
+    OpenParams,
+    PathParams,
+    PdfCommand,
+    PressCommand,
+    PressParams,
+    RefParams,
+    RefTextParams,
+    ReloadCommand,
+    Response,
+    ScreenshotCommand,
+    ScreenshotParams,
+    ScrollCommand,
+    ScrollParams,
+    SelectCommand,
+    SelectParams,
+    SnapshotCommand,
+    SnapshotParams,
+    SwitchCommand,
+    SwitchParams,
+    TabsCommand,
+    TextCommand,
+    TextParams,
+    TitleCommand,
+    TypeCommand,
+    UrlCommand,
+    WaitCommand,
+    WaitParams,
+    command_adapter,
+)
+from .protocol import error_response, ok_response
+
+# Actions the daemon can execute. ``install`` / ``sessions`` are valid commands
+# but handled CLI-side; if they reach the daemon they're treated as unknown.
+_DAEMON_ACTIONS = frozenset({
+    "open", "back", "forward", "reload", "url", "title", "close",
+    "snapshot", "click", "fill", "type", "select", "check", "hover", "press",
+    "text", "eval", "screenshot", "pdf", "scroll", "wait",
+    "tabs", "switch", "close-tab", "cookies",
+})
 
 
-def execute(manager: BrowserManager, command: dict) -> dict:
-    """Dispatch and execute a command, return a response dict."""
-    cmd_id = command.get("id", "?")
-    action = command.get("action", "")
-    params = command.get("params", {})
+def execute(
+    manager: BrowserManager, raw: dict[str, object], headless: bool | None = None
+) -> Response:
+    """Validate a raw command, dispatch it, and return a response.
+
+    Validation lives here (not at the socket read) so a malformed or unknown
+    command becomes a graceful error response instead of crashing the daemon.
+    ``headless`` is the daemon's own launch mode, applied to ``open`` so the
+    client cannot dictate it.
+    """
+    cmd_id = str(raw.get("id", "?"))
+    action = raw.get("action")
+    if action not in _DAEMON_ACTIONS:
+        return error_response(cmd_id, f"Unknown action: {action}")
 
     try:
-        handler = _HANDLERS.get(action)
-        if handler is None:
-            return error_response(cmd_id, f"Unknown action: {action}")
-        return handler(manager, cmd_id, params)
+        command = command_adapter.validate_python(raw)
+    except ValidationError as e:
+        return error_response(cmd_id, _format_validation_error(e))
+
+    if isinstance(command, OpenCommand) and headless is not None:
+        command.params.headless = headless
+
+    try:
+        return _dispatch(manager, command)
     except Exception as e:
-        return error_response(cmd_id, str(e))
+        return error_response(command.id, str(e))
+
+
+def _format_validation_error(e: ValidationError) -> str:
+    err = e.errors()[0]
+    loc = ".".join(str(p) for p in err["loc"]) or "command"
+    return f"Invalid command ({loc}): {err['msg']}"
+
+
+def _dispatch(manager: BrowserManager, command: Command) -> Response:
+    cmd_id = command.id
+    match command:
+        case OpenCommand():
+            return _cmd_open(manager, cmd_id, command.params)
+        case BackCommand():
+            return _cmd_back(manager, cmd_id)
+        case ForwardCommand():
+            return _cmd_forward(manager, cmd_id)
+        case ReloadCommand():
+            return _cmd_reload(manager, cmd_id)
+        case UrlCommand():
+            return _cmd_url(manager, cmd_id)
+        case TitleCommand():
+            return _cmd_title(manager, cmd_id)
+        case CloseCommand():
+            return _cmd_close(manager, cmd_id)
+        case SnapshotCommand():
+            return _cmd_snapshot(manager, cmd_id, command.params)
+        case ClickCommand():
+            return _cmd_click(manager, cmd_id, command.params)
+        case FillCommand():
+            return _cmd_fill(manager, cmd_id, command.params)
+        case TypeCommand():
+            return _cmd_type(manager, cmd_id, command.params)
+        case SelectCommand():
+            return _cmd_select(manager, cmd_id, command.params)
+        case CheckCommand():
+            return _cmd_check(manager, cmd_id, command.params)
+        case HoverCommand():
+            return _cmd_hover(manager, cmd_id, command.params)
+        case PressCommand():
+            return _cmd_press(manager, cmd_id, command.params)
+        case TextCommand():
+            return _cmd_text(manager, cmd_id, command.params)
+        case EvalCommand():
+            return _cmd_eval(manager, cmd_id, command.params)
+        case ScreenshotCommand():
+            return _cmd_screenshot(manager, cmd_id, command.params)
+        case PdfCommand():
+            return _cmd_pdf(manager, cmd_id, command.params)
+        case ScrollCommand():
+            return _cmd_scroll(manager, cmd_id, command.params)
+        case WaitCommand():
+            return _cmd_wait(manager, cmd_id, command.params)
+        case TabsCommand():
+            return _cmd_tabs(manager, cmd_id)
+        case SwitchCommand():
+            return _cmd_switch(manager, cmd_id, command.params)
+        case CloseTabCommand():
+            return _cmd_close_tab(manager, cmd_id)
+        case CookiesCommand():
+            return _cmd_cookies(manager, cmd_id, command.params)
+        case _:
+            return error_response(command.id, f"Unknown action: {command.action}")
 
 
 # ---------------------------------------------------------------------------
@@ -46,13 +178,13 @@ def _resolve_ref(manager: BrowserManager, ref_str: str):
 # Navigation
 # ---------------------------------------------------------------------------
 
-def _cmd_open(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    url = params.get("url", "")
+def _cmd_open(manager: BrowserManager, cmd_id: str, params: OpenParams) -> Response:
+    url = params.url
     if not url:
         return error_response(cmd_id, "Missing 'url' parameter")
 
     if not manager.is_running:
-        manager.launch(headless=params.get("headless", True))
+        manager.launch(headless=params.headless)
 
     try:
         page = manager.get_page()
@@ -61,7 +193,7 @@ def _cmd_open(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
         if "has been closed" in str(e):
             # Browser crashed or was closed externally — relaunch
             manager.close()
-            manager.launch(headless=params.get("headless", True))
+            manager.launch(headless=params.headless)
             page = manager.get_page()
             page.goto(url, wait_until="domcontentloaded")
         else:
@@ -71,7 +203,7 @@ def _cmd_open(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
-def _cmd_back(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_back(manager: BrowserManager, cmd_id: str) -> Response:
     url = manager.go_back()
     if url is None:
         return error_response(cmd_id, "No previous page in history")
@@ -79,7 +211,7 @@ def _cmd_back(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
-def _cmd_forward(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_forward(manager: BrowserManager, cmd_id: str) -> Response:
     url = manager.go_forward()
     if url is None:
         return error_response(cmd_id, "No next page in history")
@@ -87,21 +219,21 @@ def _cmd_forward(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"url": page.url, "title": page.title()})
 
 
-def _cmd_reload(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_reload(manager: BrowserManager, cmd_id: str) -> Response:
     page = manager.get_page()
     page.goto(page.url, wait_until="domcontentloaded")
     return ok_response(cmd_id)
 
 
-def _cmd_url(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_url(manager: BrowserManager, cmd_id: str) -> Response:
     return ok_response(cmd_id, {"url": manager.get_page().url})
 
 
-def _cmd_title(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_title(manager: BrowserManager, cmd_id: str) -> Response:
     return ok_response(cmd_id, {"title": manager.get_page().title()})
 
 
-def _cmd_close(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_close(manager: BrowserManager, cmd_id: str) -> Response:
     manager.close()
     return ok_response(cmd_id, {"closed": True})
 
@@ -110,14 +242,11 @@ def _cmd_close(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Snapshot
 # ---------------------------------------------------------------------------
 
-def _cmd_snapshot(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_snapshot(manager: BrowserManager, cmd_id: str, params: SnapshotParams) -> Response:
     page = manager.get_page()
-    interactive = params.get("interactive", False)
-    selector = params.get("selector")
-
-    target = page.locator(selector) if selector else page.locator("body")
+    target = page.locator(params.selector) if params.selector else page.locator("body")
     aria_text = target.aria_snapshot()
-    annotated = manager.refs.build_from_snapshot(aria_text, interactive_only=interactive)
+    annotated = manager.refs.build_from_snapshot(aria_text, interactive_only=params.interactive)
     return ok_response(cmd_id, {"snapshot": annotated})
 
 
@@ -125,11 +254,10 @@ def _cmd_snapshot(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Interaction
 # ---------------------------------------------------------------------------
 
-def _cmd_click(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    ref_str = params.get("ref", "")
-    if not ref_str:
+def _cmd_click(manager: BrowserManager, cmd_id: str, params: RefParams) -> Response:
+    if not params.ref:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    locator = _resolve_ref(manager, ref_str)
+    locator = _resolve_ref(manager, params.ref)
     page = manager.get_page()
     url_before = page.url
 
@@ -153,38 +281,31 @@ def _cmd_click(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
-def _cmd_fill(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    ref_str = params.get("ref", "")
-    text = params.get("text", "")
-    if not ref_str:
+def _cmd_fill(manager: BrowserManager, cmd_id: str, params: RefTextParams) -> Response:
+    if not params.ref:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    _resolve_ref(manager, ref_str).fill(text)
+    _resolve_ref(manager, params.ref).fill(params.text)
     return ok_response(cmd_id)
 
 
-def _cmd_type(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    ref_str = params.get("ref", "")
-    text = params.get("text", "")
-    if not ref_str:
+def _cmd_type(manager: BrowserManager, cmd_id: str, params: RefTextParams) -> Response:
+    if not params.ref:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    _resolve_ref(manager, ref_str).press_sequentially(text)
+    _resolve_ref(manager, params.ref).press_sequentially(params.text)
     return ok_response(cmd_id)
 
 
-def _cmd_select(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    ref_str = params.get("ref", "")
-    value = params.get("value", "")
-    if not ref_str:
+def _cmd_select(manager: BrowserManager, cmd_id: str, params: SelectParams) -> Response:
+    if not params.ref:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    _resolve_ref(manager, ref_str).select_option(label=value)
+    _resolve_ref(manager, params.ref).select_option(label=params.value)
     return ok_response(cmd_id)
 
 
-def _cmd_check(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    ref_str = params.get("ref", "")
-    if not ref_str:
+def _cmd_check(manager: BrowserManager, cmd_id: str, params: RefParams) -> Response:
+    if not params.ref:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    locator = _resolve_ref(manager, ref_str)
+    locator = _resolve_ref(manager, params.ref)
     if locator.is_checked():
         locator.uncheck(force=True)
     else:
@@ -192,19 +313,17 @@ def _cmd_check(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id)
 
 
-def _cmd_hover(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    ref_str = params.get("ref", "")
-    if not ref_str:
+def _cmd_hover(manager: BrowserManager, cmd_id: str, params: RefParams) -> Response:
+    if not params.ref:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    _resolve_ref(manager, ref_str).hover(force=True)
+    _resolve_ref(manager, params.ref).hover(force=True)
     return ok_response(cmd_id)
 
 
-def _cmd_press(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    key = params.get("key", "")
-    if not key:
+def _cmd_press(manager: BrowserManager, cmd_id: str, params: PressParams) -> Response:
+    if not params.key:
         return error_response(cmd_id, "Missing 'key' parameter")
-    manager.get_page().keyboard.press(key)
+    manager.get_page().keyboard.press(params.key)
     return ok_response(cmd_id)
 
 
@@ -212,8 +331,8 @@ def _cmd_press(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Data extraction
 # ---------------------------------------------------------------------------
 
-def _cmd_text(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    target = params.get("target", "")
+def _cmd_text(manager: BrowserManager, cmd_id: str, params: TextParams) -> Response:
+    target = params.target
     if not target:
         return error_response(cmd_id, "Missing 'target' parameter")
 
@@ -225,31 +344,26 @@ def _cmd_text(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     return ok_response(cmd_id, {"text": text})
 
 
-def _cmd_eval(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    expression = params.get("expression", "")
-    if not expression:
+def _cmd_eval(manager: BrowserManager, cmd_id: str, params: EvalParams) -> Response:
+    if not params.expression:
         return error_response(cmd_id, "Missing 'expression' parameter")
-    result = manager.get_page().evaluate(expression)
+    result = manager.get_page().evaluate(params.expression)
     return ok_response(cmd_id, {"result": result})
 
 
-def _cmd_screenshot(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_screenshot(manager: BrowserManager, cmd_id: str, params: ScreenshotParams) -> Response:
     page = manager.get_page()
-    path = params.get("path")
-    full_page = params.get("full_page", False)
-
-    if path:
-        page.screenshot(path=path, full_page=full_page)
-        return ok_response(cmd_id, {"path": path})
+    if params.path:
+        page.screenshot(path=params.path, full_page=params.full_page)
+        return ok_response(cmd_id, {"path": params.path})
     else:
-        buf = page.screenshot(full_page=full_page)
+        buf = page.screenshot(full_page=params.full_page)
         b64 = base64.b64encode(buf).decode("ascii")
         return ok_response(cmd_id, {"base64": b64})
 
 
-def _cmd_pdf(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    path = params.get("path", "")
-    if not path:
+def _cmd_pdf(manager: BrowserManager, cmd_id: str, params: PathParams) -> Response:
+    if not params.path:
         return error_response(cmd_id, "Missing 'path' parameter")
 
     page = manager.get_page()
@@ -260,37 +374,32 @@ def _cmd_pdf(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     img = Image.open(io.BytesIO(buf))
     if img.mode == "RGBA":
         img = img.convert("RGB")
-    img.save(path, "PDF", resolution=72.0)
+    img.save(params.path, "PDF", resolution=72.0)
 
-    return ok_response(cmd_id, {"path": path})
+    return ok_response(cmd_id, {"path": params.path})
 
 
 # ---------------------------------------------------------------------------
 # Scroll & Wait
 # ---------------------------------------------------------------------------
 
-def _cmd_scroll(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    direction = params.get("direction", "down")
-    amount = int(params.get("amount", 500))
-
-    if direction == "up":
-        amount = -amount
-
+def _cmd_scroll(manager: BrowserManager, cmd_id: str, params: ScrollParams) -> Response:
+    amount = -params.amount if params.direction == "up" else params.amount
     manager.get_page().evaluate(f"window.scrollBy(0, {amount})")
     return ok_response(cmd_id)
 
 
-def _cmd_wait(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_wait(manager: BrowserManager, cmd_id: str, params: WaitParams) -> Response:
     page = manager.get_page()
 
-    if "ms" in params:
-        page.wait_for_timeout(int(params["ms"]))
-    elif "ref" in params:
-        _resolve_ref(manager, params["ref"]).wait_for()
-    elif "selector" in params:
-        page.wait_for_selector(params["selector"])
-    elif "url" in params:
-        page.wait_for_url(params["url"])
+    if params.ms is not None:
+        page.wait_for_timeout(params.ms)
+    elif params.ref:
+        _resolve_ref(manager, params.ref).wait_for()
+    elif params.selector:
+        page.wait_for_selector(params.selector)
+    elif params.url:
+        page.wait_for_url(params.url)
     else:
         return error_response(cmd_id, "wait requires ms, ref, selector, or url parameter")
 
@@ -301,19 +410,16 @@ def _cmd_wait(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Tab management
 # ---------------------------------------------------------------------------
 
-def _cmd_tabs(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_tabs(manager: BrowserManager, cmd_id: str) -> Response:
     return ok_response(cmd_id, {"tabs": manager.get_tabs()})
 
 
-def _cmd_switch(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
-    index = params.get("index")
-    if index is None:
-        return error_response(cmd_id, "Missing 'index' parameter")
-    manager.switch_to_tab(int(index))
+def _cmd_switch(manager: BrowserManager, cmd_id: str, params: SwitchParams) -> Response:
+    manager.switch_to_tab(params.index)
     return ok_response(cmd_id, {"tabs": manager.get_tabs()})
 
 
-def _cmd_close_tab(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_close_tab(manager: BrowserManager, cmd_id: str) -> Response:
     manager.close_current_tab()
     return ok_response(cmd_id, {"tabs": manager.get_tabs()})
 
@@ -322,71 +428,26 @@ def _cmd_close_tab(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
 # Cookies
 # ---------------------------------------------------------------------------
 
-def _cmd_cookies(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
+def _cmd_cookies(manager: BrowserManager, cmd_id: str, params: CookiesParams) -> Response:
     ctx = manager.get_context()
-    op = params.get("op", "list")
+    op = params.op
 
     if op == "list":
         cookies = ctx.cookies()
         return ok_response(cmd_id, {"cookies": cookies})
 
     elif op == "export":
-        path = params.get("path", "")
-        if not path:
+        if not params.path:
             return error_response(cmd_id, "Missing 'path' parameter for export")
         cookies = ctx.cookies()
-        with open(path, "w") as f:
+        with open(params.path, "w") as f:
             json.dump(cookies, f, indent=2)
-        return ok_response(cmd_id, {"path": path, "count": len(cookies)})
+        return ok_response(cmd_id, {"path": params.path, "count": len(cookies)})
 
-    elif op == "import":
-        path = params.get("path", "")
-        if not path:
+    else:  # "import" — the only remaining Literal value
+        if not params.path:
             return error_response(cmd_id, "Missing 'path' parameter for import")
-        with open(path) as f:
+        with open(params.path) as f:
             cookies = json.load(f)
         ctx.add_cookies(cookies)
         return ok_response(cmd_id, {"count": len(cookies)})
-
-    else:
-        return error_response(cmd_id, f"Unknown cookies op: {op}")
-
-
-# ---------------------------------------------------------------------------
-# Handler dispatch table
-# ---------------------------------------------------------------------------
-
-_HANDLERS = {
-    # Navigation
-    "open": _cmd_open,
-    "back": _cmd_back,
-    "forward": _cmd_forward,
-    "reload": _cmd_reload,
-    "url": _cmd_url,
-    "title": _cmd_title,
-    "close": _cmd_close,
-    # Snapshot
-    "snapshot": _cmd_snapshot,
-    # Interaction
-    "click": _cmd_click,
-    "fill": _cmd_fill,
-    "type": _cmd_type,
-    "select": _cmd_select,
-    "check": _cmd_check,
-    "hover": _cmd_hover,
-    "press": _cmd_press,
-    # Data extraction
-    "text": _cmd_text,
-    "eval": _cmd_eval,
-    "screenshot": _cmd_screenshot,
-    "pdf": _cmd_pdf,
-    # Scroll & Wait
-    "scroll": _cmd_scroll,
-    "wait": _cmd_wait,
-    # Tab management
-    "tabs": _cmd_tabs,
-    "switch": _cmd_switch,
-    "close-tab": _cmd_close_tab,
-    # Cookies
-    "cookies": _cmd_cookies,
-}

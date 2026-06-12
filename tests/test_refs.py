@@ -1,6 +1,6 @@
 """Tests for ref registry: parsing aria snapshots and resolving refs."""
 
-from camoufox_cli.refs import RefRegistry, RefEntry, INTERACTIVE_ROLES
+from camoufox_cli.refs import INTERACTIVE_ROLES, RefRegistry
 
 
 class TestBuildFromSnapshot:

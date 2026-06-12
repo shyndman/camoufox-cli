@@ -21,6 +21,7 @@ dependencies = [
     "camoufox[geoip]",
     "playwright<1.60",
     "Pillow",
+    "pydantic>=2.13.4",
 ]
 
 [project.urls]
@@ -50,6 +51,7 @@ exclude = [".venv"]
 pythonVersion = "3.13"
 typeCheckingMode = "recommended"
 reportMissingTypeStubs = false
+reportExplicitAny = "error"
 
 [tool.ruff]
 target-version = "py313"

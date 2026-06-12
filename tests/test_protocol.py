@@ -1,6 +1,12 @@
 """Tests for JSON-line protocol."""
 
-from camoufox_cli.protocol import parse_command, serialize_response, ok_response, error_response
+from camoufox_cli.models import ErrorResponse, OkResponse
+from camoufox_cli.protocol import (
+    error_response,
+    ok_response,
+    parse_command,
+    serialize_response,
+)
 
 
 class TestParseCommand:
@@ -24,40 +30,45 @@ class TestParseCommand:
 
 class TestSerializeResponse:
     def test_basic(self):
-        resp = {"id": "r1", "success": True}
-        result = serialize_response(resp)
-        assert result == b'{"id": "r1", "success": true}\n'
+        result = serialize_response(OkResponse(id="r1"))
+        assert result == b'{"id":"r1","success":true}\n'
 
     def test_unicode(self):
-        resp = {"id": "r1", "success": True, "data": {"title": "腾讯网"}}
-        result = serialize_response(resp)
+        result = serialize_response(ok_response("r1", {"title": "腾讯网"}))
         assert "腾讯网" in result.decode("utf-8")
-        assert b"\\u" not in result  # ensure_ascii=False
+        assert b"\\u" not in result  # non-ascii preserved
 
     def test_ends_with_newline(self):
-        result = serialize_response({"id": "r1"})
+        result = serialize_response(OkResponse(id="r1"))
         assert result.endswith(b"\n")
 
 
 class TestOkResponse:
     def test_without_data(self):
         resp = ok_response("r1")
-        assert resp == {"id": "r1", "success": True}
+        assert isinstance(resp, OkResponse)
+        assert resp.id == "r1"
+        assert resp.success is True
+        assert resp.data is None
 
     def test_with_data(self):
         resp = ok_response("r1", {"url": "https://example.com"})
-        assert resp == {"id": "r1", "success": True, "data": {"url": "https://example.com"}}
+        assert resp.data is not None
+        assert resp.data.url == "https://example.com"
 
     def test_with_none_data(self):
         resp = ok_response("r1", None)
-        assert "data" not in resp
+        assert resp.data is None
 
 
 class TestErrorResponse:
     def test_basic(self):
         resp = error_response("r1", "something went wrong")
-        assert resp == {"id": "r1", "success": False, "error": "something went wrong"}
+        assert isinstance(resp, ErrorResponse)
+        assert resp.id == "r1"
+        assert resp.success is False
+        assert resp.error == "something went wrong"
 
     def test_preserves_id(self):
         resp = error_response("abc123", "err")
-        assert resp["id"] == "abc123"
+        assert resp.id == "abc123"

@@ -1,10 +1,10 @@
 import os
-
 from types import SimpleNamespace
 
 import pytest
 
 from camoufox_cli import server
+from camoufox_cli.models import ErrorResponse, OkResponse, ResponseData
 from camoufox_cli.server import DaemonServer
 
 
@@ -81,34 +81,36 @@ def _inject_server(manager):
 
 
 def _ok(data=None):
-    resp = {"id": "r1", "success": True}
-    if data is not None:
-        resp["data"] = data
-    return resp
+    return OkResponse(id="r1", data=ResponseData.model_validate(data) if data is not None else None)
+
+
+def _tab(index, active, url="https://x", title="T"):
+    return {"index": index, "url": url, "title": title, "active": active}
 
 
 class TestInjectTabChanges:
     def test_injects_tab_list_when_set_changes(self):
         pages = [object(), object()]
-        tabs = [{"index": 0, "active": True}, {"index": 1, "active": False}]
+        tabs = [_tab(0, True), _tab(1, False)]
         d = _inject_server(FakeManager(pages, tabs))
 
         resp = _ok()
         d._inject_tab_changes(resp)
 
-        assert resp["data"]["tabs"] == tabs
+        assert resp.data is not None
+        assert resp.data.tabs == tabs
 
     def test_does_not_reinject_when_set_unchanged(self):
         pages = [object(), object()]
-        d = _inject_server(FakeManager(pages, [{"index": 0, "active": True}]))
+        d = _inject_server(FakeManager(pages, [_tab(0, True)]))
 
         first = _ok()
         d._inject_tab_changes(first)
-        assert "tabs" in first["data"]
+        assert first.data is not None and first.data.tabs is not None
 
         second = _ok()
         d._inject_tab_changes(second)
-        assert "data" not in second or "tabs" not in second.get("data", {})
+        assert second.data is None or second.data.tabs is None
 
     def test_skips_when_browser_not_running(self):
         d = _inject_server(FakeManager([], [], running=False))
@@ -116,24 +118,25 @@ class TestInjectTabChanges:
         resp = _ok()
         d._inject_tab_changes(resp)
 
-        assert "data" not in resp or "tabs" not in resp.get("data", {})
+        assert resp.data is None or resp.data.tabs is None
 
     def test_skips_on_failed_response(self):
         pages = [object()]
-        d = _inject_server(FakeManager(pages, [{"index": 0, "active": True}]))
+        d = _inject_server(FakeManager(pages, [_tab(0, True)]))
 
-        resp = {"id": "r1", "success": False, "error": "boom"}
+        resp = ErrorResponse(id="r1", error="boom")
         d._inject_tab_changes(resp)
 
-        assert "data" not in resp
+        assert isinstance(resp, ErrorResponse)
 
     def test_does_not_overwrite_handler_tab_list(self):
         """A tab command already carries its own list; injection must not clobber it."""
         pages = [object()]
-        handler_tabs = [{"index": 0, "active": True, "url": "https://handler"}]
-        d = _inject_server(FakeManager(pages, [{"index": 0, "active": False}]))
+        handler_tabs = [_tab(0, True, url="https://handler")]
+        d = _inject_server(FakeManager(pages, [_tab(0, False)]))
 
         resp = _ok({"tabs": handler_tabs})
         d._inject_tab_changes(resp)
 
-        assert resp["data"]["tabs"] is handler_tabs
+        assert resp.data is not None
+        assert resp.data.tabs == handler_tabs

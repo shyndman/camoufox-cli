@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from urllib.parse import unquote, urlparse
 
+from .types import ProxySettings
 
-def parse_proxy_settings(proxy_url: str) -> dict[str, str]:
+
+def parse_proxy_settings(proxy_url: str) -> ProxySettings:
     parsed = urlparse(proxy_url)
     if parsed.scheme not in ("http", "https"):
         raise ValueError(
@@ -20,7 +22,7 @@ def parse_proxy_settings(proxy_url: str) -> dict[str, str]:
     if parsed.port:
         host_port += f":{parsed.port}"
 
-    proxy = {"server": f"{parsed.scheme}://{host_port}"}
+    proxy: ProxySettings = {"server": f"{parsed.scheme}://{host_port}"}
     username = unquote(parsed.username) if parsed.username is not None else None
     password = unquote(parsed.password) if parsed.password is not None else ""
     if username is not None:

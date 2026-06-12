@@ -11,6 +11,7 @@ import time
 
 from .browser import BrowserManager
 from .commands import execute
+from .models import OkResponse, Response, ResponseData
 from .protocol import parse_command, serialize_response
 
 
@@ -51,7 +52,7 @@ class DaemonServer:
             while self._running:
                 try:
                     conn, _ = self._server_socket.accept()
-                except socket.timeout:
+                except TimeoutError:
                     continue
                 except OSError:
                     break
@@ -82,11 +83,9 @@ class DaemonServer:
 
         command = parse_command(line)
 
-        # Pass headless preference to open commands
-        if command.get("action") == "open":
-            command.setdefault("params", {}).setdefault("headless", self.headless)
-
-        response = execute(self.manager, command)
+        # The daemon's own launch mode (from --headed) decides headless, not the
+        # client, so it's applied inside execute().
+        response = execute(self.manager, command, headless=self.headless)
         self._inject_tab_changes(response)
         conn.sendall(serialize_response(response))
 
@@ -94,14 +93,14 @@ class DaemonServer:
         if command.get("action") == "close":
             self._running = False
 
-    def _inject_tab_changes(self, response: dict) -> None:
+    def _inject_tab_changes(self, response: Response) -> None:
         """Append the current tab list to a response when the tab set changed.
 
         Tabs can appear or disappear as a side effect of any command (e.g. a
         click opening a popup), so the daemon tracks the live tab set and
         surfaces the full list whenever it differs from the previous command.
         """
-        if not response.get("success") or not self.manager.is_running:
+        if not isinstance(response, OkResponse) or not self.manager.is_running:
             return
         try:
             pages = self.manager.get_context().pages
@@ -111,9 +110,10 @@ class DaemonServer:
         if sig == self._last_tab_sig:
             return
         self._last_tab_sig = sig
-        data = response.setdefault("data", {})
-        if "tabs" not in data:
-            data["tabs"] = self.manager.get_tabs()
+        if response.data is None:
+            response.data = ResponseData()
+        if response.data.tabs is None:
+            response.data.tabs = self.manager.get_tabs()
 
     def _idle_watchdog(self) -> None:
         while self._running:

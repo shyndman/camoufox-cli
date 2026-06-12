@@ -9,6 +9,57 @@ import subprocess
 import sys
 import time
 
+from .models import (
+    BackCommand,
+    CheckCommand,
+    ClickCommand,
+    CloseCommand,
+    CloseParams,
+    CloseTabCommand,
+    Command,
+    CookiesCommand,
+    CookiesParams,
+    ErrorResponse,
+    EvalCommand,
+    EvalParams,
+    FillCommand,
+    ForwardCommand,
+    HoverCommand,
+    InstallCommand,
+    InstallParams,
+    OpenCommand,
+    OpenParams,
+    PathParams,
+    PdfCommand,
+    PressCommand,
+    PressParams,
+    RefParams,
+    RefTextParams,
+    ReloadCommand,
+    Response,
+    ScreenshotCommand,
+    ScreenshotParams,
+    ScrollCommand,
+    ScrollParams,
+    SelectCommand,
+    SelectParams,
+    SessionsCommand,
+    SnapshotCommand,
+    SnapshotParams,
+    SwitchCommand,
+    SwitchParams,
+    TabsCommand,
+    TextCommand,
+    TextParams,
+    TitleCommand,
+    TypeCommand,
+    UrlCommand,
+    WaitCommand,
+    WaitParams,
+    command_adapter,
+    response_adapter,
+)
+from .types import Flags, Tab
 
 SOCKET_PREFIX = "/tmp/camoufox-cli-"
 
@@ -33,10 +84,10 @@ def get_log_path(session: str) -> str:
     return f"{SOCKET_PREFIX}{session}.log"
 
 
-def send_command(sock_path: str, command: dict) -> dict:
+def send_command(sock_path: str, command: Command) -> Response:
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.connect(sock_path)
-    s.sendall(json.dumps(command).encode() + b"\n")
+    s.sendall(command_adapter.dump_json(command) + b"\n")
     s.shutdown(socket.SHUT_WR)
     # Past this point the command is on the wire; any failure reading the
     # reply is a ResponseError, never a retryable connect-phase error.
@@ -47,7 +98,7 @@ def send_command(sock_path: str, command: dict) -> dict:
             if not chunk:
                 break
             data += chunk
-        return json.loads(data.decode())
+        return response_adapter.validate_json(data)
     except Exception as e:
         raise ResponseError(e) from e
     finally:
@@ -118,10 +169,10 @@ def list_sessions() -> list[str]:
     return sessions
 
 
-def parse_args(args: list[str]) -> tuple[dict, dict]:
-    """Parse CLI args into (flags, command). Returns (flags_dict, command_json)."""
-    flags = {"session": "default", "headed": False, "timeout": 1800, "json": False, "persistent": None, "proxy": None, "geoip": True, "locale": None}
-    rest = []
+def parse_args(args: list[str]) -> tuple[Flags, Command]:
+    """Parse CLI args into (flags, command)."""
+    flags = Flags()
+    rest: list[str] = []
 
     i = 0
     while i < len(args):
@@ -130,38 +181,38 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
             if i >= len(args):
                 print("Error: --session requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["session"] = args[i]
+            flags.session = args[i]
         elif args[i] == "--headed":
-            flags["headed"] = True
+            flags.headed = True
         elif args[i] == "--timeout":
             i += 1
             if i >= len(args):
                 print("Error: --timeout requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["timeout"] = _require_int(args[i], "--timeout (daemon idle timeout in seconds)", 1)
+            flags.timeout = _require_int(args[i], "--timeout (daemon idle timeout in seconds)", 1)
         elif args[i] == "--json":
-            flags["json"] = True
+            flags.json = True
         elif args[i] == "--persistent":
             # Optional value: if next arg looks like a path, use it; otherwise use default
             if i + 1 < len(args) and ("/" in args[i + 1] or args[i + 1].startswith((".", "~"))):
                 i += 1
-                flags["persistent"] = args[i]
+                flags.persistent = args[i]
             else:
-                flags["persistent"] = ""
+                flags.persistent = ""
         elif args[i] == "--proxy":
             i += 1
             if i >= len(args):
                 print("Error: --proxy requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["proxy"] = args[i]
+            flags.proxy = args[i]
         elif args[i] == "--no-geoip":
-            flags["geoip"] = False
+            flags.geoip = False
         elif args[i] == "--locale":
             i += 1
             if i >= len(args):
                 print("Error: --locale requires a value", file=sys.stderr)
                 sys.exit(1)
-            flags["locale"] = args[i]
+            flags.locale = args[i]
         else:
             rest.append(args[i])
         i += 1
@@ -175,126 +226,128 @@ def parse_args(args: list[str]) -> tuple[dict, dict]:
     return flags, cmd
 
 
-def build_command(action: str, rest: list[str]) -> dict:
-    """Build JSON command from action and remaining args."""
+def build_command(action: str, rest: list[str]) -> Command:
+    """Build a typed command from action and remaining args."""
     match action:
         # Navigation
         case "open":
             url = _require(rest, 1, "Usage: camoufox-cli open <url>")
-            return {"id": "r1", "action": "open", "params": {"url": url}}
+            return OpenCommand(id="r1", params=OpenParams(url=url))
         case "back":
-            return {"id": "r1", "action": "back", "params": {}}
+            return BackCommand(id="r1")
         case "forward":
-            return {"id": "r1", "action": "forward", "params": {}}
+            return ForwardCommand(id="r1")
         case "reload":
-            return {"id": "r1", "action": "reload", "params": {}}
+            return ReloadCommand(id="r1")
         case "url":
-            return {"id": "r1", "action": "url", "params": {}}
+            return UrlCommand(id="r1")
         case "title":
-            return {"id": "r1", "action": "title", "params": {}}
+            return TitleCommand(id="r1")
         case "close":
-            all_flag = "--all" in rest
-            return {"id": "r1", "action": "close", "params": {"all": all_flag}}
+            return CloseCommand(id="r1", params=CloseParams(all="--all" in rest))
 
         # Snapshot
         case "snapshot":
-            interactive = "-i" in rest
             selector = None
             if "-s" in rest:
                 idx = rest.index("-s")
                 selector = _require(rest, idx + 1, "Usage: camoufox-cli snapshot -s <selector>")
-            params = {"interactive": interactive}
-            if selector:
-                params["selector"] = selector
-            return {"id": "r1", "action": "snapshot", "params": params}
+            return SnapshotCommand(
+                id="r1",
+                params=SnapshotParams(interactive="-i" in rest, selector=selector),
+            )
 
         # Interaction
         case "click":
             ref = _require(rest, 1, "Usage: camoufox-cli click @e1")
-            return {"id": "r1", "action": "click", "params": {"ref": ref}}
+            return ClickCommand(id="r1", params=RefParams(ref=ref))
         case "fill":
             ref = _require(rest, 1, "Usage: camoufox-cli fill @e1 \"text\"")
             text = _require(rest, 2, "Usage: camoufox-cli fill @e1 \"text\"")
-            return {"id": "r1", "action": "fill", "params": {"ref": ref, "text": text}}
+            return FillCommand(id="r1", params=RefTextParams(ref=ref, text=text))
         case "type":
             ref = _require(rest, 1, "Usage: camoufox-cli type @e1 \"text\"")
             text = _require(rest, 2, "Usage: camoufox-cli type @e1 \"text\"")
-            return {"id": "r1", "action": "type", "params": {"ref": ref, "text": text}}
+            return TypeCommand(id="r1", params=RefTextParams(ref=ref, text=text))
         case "select":
             ref = _require(rest, 1, "Usage: camoufox-cli select @e1 \"option\"")
             value = _require(rest, 2, "Usage: camoufox-cli select @e1 \"option\"")
-            return {"id": "r1", "action": "select", "params": {"ref": ref, "value": value}}
+            return SelectCommand(id="r1", params=SelectParams(ref=ref, value=value))
         case "check":
             ref = _require(rest, 1, "Usage: camoufox-cli check @e1")
-            return {"id": "r1", "action": "check", "params": {"ref": ref}}
+            return CheckCommand(id="r1", params=RefParams(ref=ref))
         case "hover":
             ref = _require(rest, 1, "Usage: camoufox-cli hover @e1")
-            return {"id": "r1", "action": "hover", "params": {"ref": ref}}
+            return HoverCommand(id="r1", params=RefParams(ref=ref))
         case "press":
             key = _require(rest, 1, "Usage: camoufox-cli press Enter")
-            return {"id": "r1", "action": "press", "params": {"key": key}}
+            return PressCommand(id="r1", params=PressParams(key=key))
 
         # Data extraction
         case "text":
             target = _require(rest, 1, "Usage: camoufox-cli text @e1 | camoufox-cli text body")
-            return {"id": "r1", "action": "text", "params": {"target": target}}
+            return TextCommand(id="r1", params=TextParams(target=target))
         case "eval":
             expr = _require(rest, 1, "Usage: camoufox-cli eval \"document.title\"")
-            return {"id": "r1", "action": "eval", "params": {"expression": expr}}
+            return EvalCommand(id="r1", params=EvalParams(expression=expr))
         case "screenshot":
-            params = {}
+            screenshot_params = ScreenshotParams()
             for arg in rest[1:]:
                 if arg == "--full":
-                    params["full_page"] = True
+                    screenshot_params.full_page = True
                 else:
-                    params["path"] = arg
-            return {"id": "r1", "action": "screenshot", "params": params}
+                    screenshot_params.path = arg
+            return ScreenshotCommand(id="r1", params=screenshot_params)
         case "pdf":
             path = _require(rest, 1, "Usage: camoufox-cli pdf output.pdf")
-            return {"id": "r1", "action": "pdf", "params": {"path": path}}
+            return PdfCommand(id="r1", params=PathParams(path=path))
 
         # Scroll & Wait
         case "scroll":
             direction = _require(rest, 1, "Usage: camoufox-cli scroll down [px]")
             amount = _require_int(rest[2], "scroll distance in pixels", 1) if len(rest) > 2 else 500
-            return {"id": "r1", "action": "scroll", "params": {"direction": direction, "amount": amount}}
+            return ScrollCommand(id="r1", params=ScrollParams(direction=direction, amount=amount))
         case "wait":
             target = _require(rest, 1, "Usage: camoufox-cli wait @e1 | camoufox-cli wait 2000 | camoufox-cli wait --url \"pattern\"")
             if target == "--url":
                 pattern = _require(rest, 2, "Usage: camoufox-cli wait --url \"*/dashboard\"")
-                return {"id": "r1", "action": "wait", "params": {"url": pattern}}
+                return WaitCommand(id="r1", params=WaitParams(url=pattern))
             elif target.startswith("@"):
-                return {"id": "r1", "action": "wait", "params": {"ref": target}}
+                return WaitCommand(id="r1", params=WaitParams(ref=target))
             elif target[0].isdigit():
-                return {"id": "r1", "action": "wait", "params": {"ms": _require_int(target, "wait duration in milliseconds", 1)}}
+                ms = _require_int(target, "wait duration in milliseconds", 1)
+                return WaitCommand(id="r1", params=WaitParams(ms=ms))
             else:
-                return {"id": "r1", "action": "wait", "params": {"selector": target}}
+                return WaitCommand(id="r1", params=WaitParams(selector=target))
 
         # Tab management
         case "tabs":
-            return {"id": "r1", "action": "tabs", "params": {}}
+            return TabsCommand(id="r1")
         case "switch":
             index = _require(rest, 1, "Usage: camoufox-cli switch <tab-index>")
-            return {"id": "r1", "action": "switch", "params": {"index": _require_int(index, "switch tab index")}}
+            return SwitchCommand(
+                id="r1",
+                params=SwitchParams(index=_require_int(index, "switch tab index")),
+            )
         case "close-tab":
-            return {"id": "r1", "action": "close-tab", "params": {}}
+            return CloseTabCommand(id="r1")
 
         # Install
         case "install":
-            return {"id": "r1", "action": "install", "params": {"with_deps": "--with-deps" in rest}}
+            return InstallCommand(id="r1", params=InstallParams(with_deps="--with-deps" in rest))
 
         # Session & Cookies
         case "sessions":
-            return {"id": "r1", "action": "sessions", "params": {}}
+            return SessionsCommand(id="r1")
         case "cookies":
             if len(rest) > 1 and rest[1] == "import":
                 path = _require(rest, 2, "Usage: camoufox-cli cookies import file.json")
-                return {"id": "r1", "action": "cookies", "params": {"op": "import", "path": path}}
+                return CookiesCommand(id="r1", params=CookiesParams(op="import", path=path))
             elif len(rest) > 1 and rest[1] == "export":
                 path = _require(rest, 2, "Usage: camoufox-cli cookies export file.json")
-                return {"id": "r1", "action": "cookies", "params": {"op": "export", "path": path}}
+                return CookiesCommand(id="r1", params=CookiesParams(op="export", path=path))
             else:
-                return {"id": "r1", "action": "cookies", "params": {"op": "list"}}
+                return CookiesCommand(id="r1", params=CookiesParams(op="list"))
 
         case _:
             print(f"Unknown command: {action}\n{USAGE}", file=sys.stderr)
@@ -320,20 +373,23 @@ def _require_int(value: str, label: str, minimum: int | None = None) -> int:
     return n
 
 
-def print_response(response: dict, json_mode: bool) -> None:
+def print_response(response: Response, json_mode: bool) -> None:
     if json_mode:
-        print(json.dumps(response, indent=2, ensure_ascii=False))
+        print(response.model_dump_json(indent=2, exclude_none=True))
         return
 
-    if not response.get("success"):
-        print(f"Error: {response.get('error', 'Unknown error')}", file=sys.stderr)
+    if isinstance(response, ErrorResponse):
+        print(f"Error: {response.error}", file=sys.stderr)
         sys.exit(1)
 
-    data = response.get("data")
+    if response.data is None:
+        return
+
+    data = response.data.model_dump(exclude_none=True)
     if not data:
         return
 
-    tabs = data.get("tabs") if isinstance(data, dict) else None
+    tabs = data.get("tabs")
 
     if "snapshot" in data:
         print(data["snapshot"])
@@ -357,7 +413,7 @@ def print_response(response: dict, json_mode: bool) -> None:
         print(_format_tabs(tabs))
 
 
-def _format_tabs(tabs: list[dict]) -> str:
+def _format_tabs(tabs: list[Tab]) -> str:
     if not tabs:
         return "(no tabs)"
     title_width = max(len(t.get("title") or "") for t in tabs)
@@ -432,26 +488,24 @@ def main():
     flags, command = parse_args(args)
 
     # Resolve default persistent path
-    if flags["persistent"] == "":
-        flags["persistent"] = os.path.expanduser(f"~/.camoufox-cli/profiles/{flags['session']}")
-
-    action = command.get("action", "")
+    if flags.persistent == "":
+        flags.persistent = os.path.expanduser(f"~/.camoufox-cli/profiles/{flags.session}")
 
     # Client-side: install
-    if action == "install":
+    if isinstance(command, InstallCommand):
         print("[camoufox-cli] Downloading browser...", file=sys.stderr)
         from camoufox.pkgman import CamoufoxFetcher
         fetcher = CamoufoxFetcher()
         fetcher.install()
         print("[camoufox-cli] Browser installed.", file=sys.stderr)
-        if command.get("params", {}).get("with_deps"):
+        if command.params.with_deps:
             _install_system_deps()
         return
 
     # Client-side: sessions
-    if action == "sessions":
+    if isinstance(command, SessionsCommand):
         sessions = list_sessions()
-        if flags["json"]:
+        if flags.json:
             print(json.dumps(sessions, indent=2))
         elif not sessions:
             print("No active sessions.")
@@ -461,12 +515,12 @@ def main():
         return
 
     # Client-side: close --all
-    if action == "close" and command.get("params", {}).get("all"):
+    if isinstance(command, CloseCommand) and command.params.all:
         sessions = list_sessions()
         if not sessions:
             print("No active sessions.")
             return
-        close_cmd = {"id": "r1", "action": "close", "params": {}}
+        close_cmd = CloseCommand(id="r1", params=CloseParams())
         for session in sessions:
             sock_path = get_socket_path(session)
             try:
@@ -476,16 +530,16 @@ def main():
         return
 
     # Ensure daemon is running
-    ensure_daemon(flags["session"], flags["headed"], flags["timeout"], flags["persistent"], flags["proxy"], flags["geoip"], flags["locale"])
+    ensure_daemon(flags.session, flags.headed, flags.timeout, flags.persistent, flags.proxy, flags.geoip, flags.locale)
 
-    sock_path = get_socket_path(flags["session"])
+    sock_path = get_socket_path(flags.session)
 
     # Send command with retry
     last_err = ""
     for attempt in range(5):
         try:
             response = send_command(sock_path, command)
-            print_response(response, flags["json"])
+            print_response(response, flags.json)
             return
         except ResponseError as e:
             # Command was already delivered; the daemon may have executed it.

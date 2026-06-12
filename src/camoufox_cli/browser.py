@@ -10,7 +10,7 @@ from playwright.sync_api import BrowserContext, Page
 from .identity import load_or_create, to_launch_kwargs
 from .proxy import parse_proxy_settings
 from .refs import RefRegistry
-
+from .types import ProxySettings, Tab
 
 _MAX_HISTORY = 200
 
@@ -49,8 +49,8 @@ class BrowserManager:
 
         _ensure_browser_installed()
 
-        kwargs: dict = {"headless": headless}
-        proxy_settings: dict | None = None
+        kwargs: dict[str, object] = {"headless": headless}
+        proxy_settings: ProxySettings | None = None
         if self._proxy:
             proxy_settings = parse_proxy_settings(self._proxy)
             kwargs["proxy"] = proxy_settings
@@ -100,9 +100,9 @@ class BrowserManager:
             raise RuntimeError("Browser not launched. Send 'open' command first.")
         return self._context
 
-    def get_tabs(self) -> list[dict]:
+    def get_tabs(self) -> list[Tab]:
         ctx = self.get_context()
-        tabs = []
+        tabs: list[Tab] = []
         for i, p in enumerate(ctx.pages):
             tabs.append({
                 "index": i,
