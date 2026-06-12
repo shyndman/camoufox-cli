@@ -122,15 +122,20 @@ class DaemonServer:
         if os.path.exists(self.socket_path):
             # Check if another daemon is using it
             if os.path.exists(self.pid_path):
+                alive = False
+                pid = None
                 try:
                     with open(self.pid_path) as f:
                         pid = int(f.read().strip())
                     os.kill(pid, 0)
-                    # Process exists — abort
+                    alive = True  # process exists and we can signal it
+                except PermissionError:
+                    alive = True  # process exists, owned by another user (EPERM)
+                except (ProcessLookupError, ValueError):
+                    pass  # stale pid or corrupt pid file, clean up
+                if alive:
                     print(f"[camoufox-cli] Daemon already running (pid {pid})", file=sys.stderr)
                     sys.exit(1)
-                except (ProcessLookupError, PermissionError, ValueError):
-                    pass  # stale pid or other user's process, clean up
             os.unlink(self.socket_path)
 
     def _write_pid(self) -> None:
