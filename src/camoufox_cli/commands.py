@@ -133,16 +133,19 @@ def _cmd_click(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     page = manager.get_page()
     url_before = page.url
 
-    # Navigate via page.goto() for links, el.click() for other elements.
-    # This avoids two Camoufox issues:
-    # 1. Playwright's .click() times out when sticky headers/overlays intercept pointer events
-    # 2. Camoufox ignores target="_blank" clicks (both .click() and el.click() silently fail)
-    # Walk up the DOM to find <a> ancestor since the locator may resolve to a child element.
-    link_href = locator.evaluate("el => { while (el) { if (el.tagName === 'A') return el.href; el = el.parentElement; } return null; }")
-    if link_href:
-        page.goto(link_href, wait_until="domcontentloaded")
+    # Issue real trusted click (force=True bypasses the actionability check, so
+    # sticky headers/overlays intercepting pointer events no longer time it out).
+    # A real click fires onclick/JS/SPA/hash handlers AND performs default
+    # navigation for plain links, unlike the old page.goto() path which skipped
+    # handlers and broke JS/hash/SPA links. Camoufox still silently drops
+    # target="_blank" clicks, so those are navigated explicitly via page.goto().
+    blank_href = locator.evaluate(
+        "el => { const a = el.closest('a'); return a && a.target === '_blank' ? a.href : null; }"
+    )
+    if blank_href:
+        page.goto(blank_href, wait_until="domcontentloaded")
     else:
-        locator.evaluate("el => el.click()")
+        locator.click(force=True)
 
     url_after = page.url
     if url_after != url_before:

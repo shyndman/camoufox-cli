@@ -129,6 +129,29 @@ class TestE2E:
         resp = cmd(daemon, "eval", {"expression": "document.getElementById('output').textContent"})
         assert resp["data"]["result"] == "clicked"
 
+    def test_click_js_anchor_fires_handler(self, daemon):
+        # Regression for #2: clicking a JS-driven <a href="#"> must fire its
+        # onclick handler instead of navigating via goto and skipping it.
+        js_page = (
+            "data:text/html,"
+            "<a id='lnk' href='%23' onclick=\""
+            "document.getElementById('out').textContent='clicked'\">go</a>"
+            "<p id='out'>ready</p>"
+        )
+        resp = cmd(daemon, "open", {"url": js_page})
+        assert resp["success"] is True
+
+        resp = cmd(daemon, "snapshot")
+        ref = find_ref(resp["data"]["snapshot"], "link")
+        resp = cmd(daemon, "click", {"ref": ref})
+        assert resp["success"] is True
+
+        resp = cmd(daemon, "eval", {"expression": "document.getElementById('out').textContent"})
+        assert resp["data"]["result"] == "clicked"
+
+        # Restore fixture for subsequent tests.
+        cmd(daemon, "open", {"url": FIXTURE_URL})
+
     def test_select_dropdown(self, daemon):
         resp = cmd(daemon, "snapshot")
         ref = find_ref(resp["data"]["snapshot"], "combobox")
