@@ -306,14 +306,13 @@ def _cmd_switch(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     index = params.get("index")
     if index is None:
         return error_response(cmd_id, "Missing 'index' parameter")
-    page = manager.switch_to_tab(int(index))
-    return ok_response(cmd_id, {"url": page.url, "title": page.title()})
+    manager.switch_to_tab(int(index))
+    return ok_response(cmd_id, {"tabs": manager.get_tabs()})
 
 
 def _cmd_close_tab(manager: BrowserManager, cmd_id: str, params: dict) -> dict:
     manager.close_current_tab()
-    page = manager.get_page()
-    return ok_response(cmd_id, {"url": page.url, "title": page.title()})
+    return ok_response(cmd_id, {"tabs": manager.get_tabs()})
 
 
 # ---------------------------------------------------------------------------

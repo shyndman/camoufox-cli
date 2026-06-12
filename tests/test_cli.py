@@ -2,7 +2,15 @@
 
 import pytest
 
-from camoufox_cli.cli import build_command, parse_args, list_sessions, get_log_path, get_socket_path
+from camoufox_cli.cli import (
+    build_command,
+    parse_args,
+    list_sessions,
+    get_log_path,
+    get_socket_path,
+    _format_tabs,
+    print_response,
+)
 
 
 class TestBuildCommand:
@@ -294,3 +302,52 @@ class TestGetLogPath:
 
     def test_custom_session(self):
         assert get_log_path("my-session") == "/tmp/camoufox-cli-my-session.log"
+
+
+class TestFormatTabs:
+    def test_active_tab_is_marked(self):
+        tabs = [
+            {"index": 0, "url": "https://a", "title": "A", "active": False},
+            {"index": 1, "url": "https://b", "title": "B", "active": True},
+        ]
+        lines = _format_tabs(tabs).splitlines()
+        assert lines[0][0] == " "
+        assert lines[1].startswith("* 1")
+        assert "0" in lines[0]
+        assert "https://b" in lines[1]
+
+    def test_empty_tab_list(self):
+        assert _format_tabs([]) == "(no tabs)"
+
+    def test_titles_are_column_aligned(self):
+        tabs = [
+            {"index": 0, "url": "https://a", "title": "short", "active": True},
+            {"index": 1, "url": "https://b", "title": "a much longer title", "active": False},
+        ]
+        lines = _format_tabs(tabs).splitlines()
+        assert lines[0].index("https://a") == lines[1].index("https://b")
+
+
+class TestPrintResponseTabs:
+    def test_renders_table_for_tabs_only_response(self, capsys):
+        resp = {
+            "success": True,
+            "data": {"tabs": [{"index": 0, "url": "https://a", "title": "A", "active": True}]},
+        }
+        print_response(resp, json_mode=False)
+        out = capsys.readouterr().out
+        assert "* 0" in out
+        assert "{" not in out  # not a raw JSON dump
+
+    def test_appends_table_after_primary_output(self, capsys):
+        resp = {
+            "success": True,
+            "data": {
+                "text": "hello",
+                "tabs": [{"index": 0, "url": "https://a", "title": "A", "active": True}],
+            },
+        }
+        print_response(resp, json_mode=False)
+        lines = capsys.readouterr().out.splitlines()
+        assert lines[0] == "hello"
+        assert lines[1].startswith("* 0")

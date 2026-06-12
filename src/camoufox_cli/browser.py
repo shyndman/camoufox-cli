@@ -138,12 +138,18 @@ class BrowserManager:
         if len(pages) <= 1:
             raise RuntimeError("Cannot close the last tab. Use 'close' to shut down the browser.")
         current = self._page
-        # Switch to another tab before closing
-        idx = pages.index(current)
-        new_idx = idx - 1 if idx > 0 else 1
-        self._page = pages[new_idx]
-        self._page.bring_to_front()
-        current.close()
+        if current in pages:
+            # Switch to a neighbor, then close the active tab.
+            idx = pages.index(current)
+            new_idx = idx - 1 if idx > 0 else 1
+            self._page = pages[new_idx]
+            self._page.bring_to_front()
+            current.close()
+        else:
+            # Active tab was closed externally (e.g. a popup called
+            # window.close()); it is already gone, so just promote a survivor.
+            self._page = pages[-1]
+            self._page.bring_to_front()
 
     def push_history(self, url: str) -> None:
         """Record a URL in our navigation history."""

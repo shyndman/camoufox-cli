@@ -25,6 +25,9 @@ class DaemonServer:
         self._server_socket: socket.socket | None = None
         self._last_activity = time.time()
         self._running = False
+        # Signature of the live tab set after the previous command, used to
+        # inject the current tab list whenever the set of tabs changes.
+        self._last_tab_sig: frozenset[int] | None = None
 
     def start(self) -> None:
         self._cleanup_stale()
@@ -84,11 +87,33 @@ class DaemonServer:
             command.setdefault("params", {}).setdefault("headless", self.headless)
 
         response = execute(self.manager, command)
+        self._inject_tab_changes(response)
         conn.sendall(serialize_response(response))
 
         # If close command, shut down the daemon
         if command.get("action") == "close":
             self._running = False
+
+    def _inject_tab_changes(self, response: dict) -> None:
+        """Append the current tab list to a response when the tab set changed.
+
+        Tabs can appear or disappear as a side effect of any command (e.g. a
+        click opening a popup), so the daemon tracks the live tab set and
+        surfaces the full list whenever it differs from the previous command.
+        """
+        if not response.get("success") or not self.manager.is_running:
+            return
+        try:
+            pages = self.manager.get_context().pages
+        except RuntimeError:
+            return
+        sig = frozenset(id(p) for p in pages)
+        if sig == self._last_tab_sig:
+            return
+        self._last_tab_sig = sig
+        data = response.setdefault("data", {})
+        if "tabs" not in data:
+            data["tabs"] = self.manager.get_tabs()
 
     def _idle_watchdog(self) -> None:
         while self._running:

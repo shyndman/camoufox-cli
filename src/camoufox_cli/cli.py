@@ -315,6 +315,8 @@ def print_response(response: dict, json_mode: bool) -> None:
     if not data:
         return
 
+    tabs = data.get("tabs") if isinstance(data, dict) else None
+
     if "snapshot" in data:
         print(data["snapshot"])
     elif "text" in data:
@@ -330,8 +332,23 @@ def print_response(response: dict, json_mode: bool) -> None:
         print(data["url"])
     elif "title" in data:
         print(data["title"])
-    else:
+    elif tabs is None:
         print(json.dumps(data, indent=2, ensure_ascii=False))
+
+    if tabs is not None:
+        print(_format_tabs(tabs))
+
+
+def _format_tabs(tabs: list[dict]) -> str:
+    if not tabs:
+        return "(no tabs)"
+    title_width = max(len(t.get("title") or "") for t in tabs)
+    lines = []
+    for t in tabs:
+        marker = "*" if t.get("active") else " "
+        title = (t.get("title") or "").ljust(title_width)
+        lines.append(f"{marker} {t['index']}  {title}  {t['url']}")
+    return "\n".join(lines)
 
 
 _APT_DEPS = [
