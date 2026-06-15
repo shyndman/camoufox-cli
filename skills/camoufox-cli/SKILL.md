@@ -96,7 +96,10 @@ camoufox-cli pdf output.pdf          # Save page as PDF
 # Scroll & Wait
 camoufox-cli scroll down             # Scroll down 500px
 camoufox-cli scroll up               # Scroll up 500px
+camoufox-cli scroll left             # Scroll left 500px
+camoufox-cli scroll right            # Scroll right 500px
 camoufox-cli scroll down 1000        # Scroll down 1000px
+camoufox-cli scroll right 800        # Scroll right 800px
 camoufox-cli wait @e1                # Wait for element to appear
 camoufox-cli wait 2000               # Wait milliseconds
 camoufox-cli wait --url "*/dashboard" # Wait for URL pattern
@@ -315,8 +318,8 @@ camoufox-cli snapshot -i
 --headed               Show browser window (default: headless)
 --timeout <seconds>    Daemon idle timeout (default: 1800)
 --json                 Output as JSON instead of human-readable
---persistent [path]    Persistent identity — reuse the same fingerprint + cookies across launches
-                       (default path: ~/.camoufox-cli/profiles/<session>)
+--persistent           Persistent identity at the default path (~/.camoufox-cli/profiles/<session>)
+--user-data-dir <path> Persistent identity at an explicit directory
 --proxy <url>          Proxy server (http:// or https://; auth: http://user:pass@host:port)
 --no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
@@ -324,14 +327,14 @@ camoufox-cli snapshot -i
 
 ## Persistent Identity
 
-By default, every launch gets a fresh random fingerprint. Add `--persistent [path]` to reuse the same fingerprint + cookies across launches — fingerprint/OS/canvas+font seeds are frozen on first launch (delete the directory to reset); `--locale` and proxy-derived timezone/geolocation are stored but refreshed whenever you pass the flag; `--proxy` / `--no-geoip` are never stored, so pass them every launch.
+By default, every launch gets a fresh random fingerprint. To reuse the same fingerprint + cookies across launches, use `--persistent` (default path `~/.camoufox-cli/profiles/<session>`) or `--user-data-dir <path>` for an explicit directory — fingerprint/OS/canvas+font seeds are frozen on first launch (delete the directory to reset); `--locale` and proxy-derived timezone/geolocation are stored but refreshed whenever you pass the flag; `--proxy` / `--no-geoip` are never stored, so pass them every launch.
 
 **Use it when** the same device should see the same fingerprint across visits (account-bound tasks, parallel independent identities, or when `cookies import/export` alone isn't enough because the site also checks device stability). **Skip it** for one-off scraping or quick debugging.
 
 ```bash
 # Parallel identities, each with its own fingerprint + cookies
-camoufox-cli --session a --persistent ~/.camoufox-cli/profiles/alice open https://app.example.com
-camoufox-cli --session b --persistent ~/.camoufox-cli/profiles/bob   open https://app.example.com
+camoufox-cli --session a --user-data-dir ~/.camoufox-cli/profiles/alice open https://app.example.com
+camoufox-cli --session b --user-data-dir ~/.camoufox-cli/profiles/bob   open https://app.example.com
 
 # Reset an identity: just remove the directory
 rm -rf ~/.camoufox-cli/profiles/alice

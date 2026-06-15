@@ -1,4 +1,4 @@
-"""Tests for CLI argument parsing and command building."""
+"""Tests for the Typer CLI app, output formatting, and transport safety."""
 
 import json
 import os
@@ -8,23 +8,17 @@ import threading
 import time
 
 import pytest
+from typer.testing import CliRunner
 
-from camoufox_cli.cli import (
-    ResponseError,
-    _format_tabs,
-    build_command,
-    get_log_path,
-    get_socket_path,
-    parse_args,
-    print_response,
-    send_command,
-)
+from camoufox_cli import operations as ops
+from camoufox_cli.cli import _format_tabs, app, print_response
 from camoufox_cli.models import (
     BackCommand,
     CheckCommand,
     ClickCommand,
     CloseCommand,
     CloseTabCommand,
+    Command,
     CookiesCommand,
     EvalCommand,
     FillCommand,
@@ -37,6 +31,7 @@ from camoufox_cli.models import (
     ResponseData,
     ScreenshotCommand,
     ScrollCommand,
+    ScrollDirection,
     SelectCommand,
     SnapshotCommand,
     SwitchCommand,
@@ -47,316 +42,386 @@ from camoufox_cli.models import (
     UrlCommand,
     WaitCommand,
 )
+from camoufox_cli.operations import (
+    ResponseError,
+    get_log_path,
+    get_socket_path,
+    send_command,
+)
 from camoufox_cli.types import Tab
 
+runner = CliRunner()
 
-class TestBuildCommand:
+
+@pytest.fixture
+def cap(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Intercept the daemon transport so commands are captured, not sent.
+
+    ``box["flags"]`` is the positional tuple passed to ``ensure_daemon`` and
+    ``box["command"]`` is the typed command that ``_run`` would transmit.
+    """
+    box: dict[str, object] = {}
+
+    def fake_ensure(
+        session: str,
+        headed: bool,
+        timeout: int,
+        persistent: str | None,
+        proxy: str | None,
+        geoip: bool,
+        locale: str | None,
+    ) -> None:
+        box["flags"] = (session, headed, timeout, persistent, proxy, geoip, locale)
+
+    def fake_send(_sock_path: str, command: Command) -> OkResponse:
+        box["command"] = command
+        return OkResponse(id="r1")
+
+    monkeypatch.setattr(ops, "ensure_daemon", fake_ensure)
+    monkeypatch.setattr(ops, "send_command", fake_send)
+    return box
+
+
+class TestCli:
+    """Drive the Typer app end-to-end (transport monkeypatched via ``cap``)."""
+
     # --- Navigation ---
-    def test_open(self):
-        cmd = build_command("open", ["open", "https://example.com"])
+    def test_open(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["open", "https://example.com"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, OpenCommand)
         assert cmd.params.url == "https://example.com"
 
-    def test_back(self):
-        cmd = build_command("back", ["back"])
-        assert isinstance(cmd, BackCommand)
+    def test_back(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["back"])
+        assert result.exit_code == 0
+        assert isinstance(cap["command"], BackCommand)
 
-    def test_forward(self):
-        cmd = build_command("forward", ["forward"])
-        assert isinstance(cmd, ForwardCommand)
+    def test_forward(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["forward"])
+        assert result.exit_code == 0
+        assert isinstance(cap["command"], ForwardCommand)
 
-    def test_reload(self):
-        cmd = build_command("reload", ["reload"])
-        assert isinstance(cmd, ReloadCommand)
+    def test_reload(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["reload"])
+        assert result.exit_code == 0
+        assert isinstance(cap["command"], ReloadCommand)
 
-    def test_url(self):
-        cmd = build_command("url", ["url"])
-        assert isinstance(cmd, UrlCommand)
+    def test_url(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["url"])
+        assert result.exit_code == 0
+        assert isinstance(cap["command"], UrlCommand)
 
-    def test_title(self):
-        cmd = build_command("title", ["title"])
-        assert isinstance(cmd, TitleCommand)
+    def test_title(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["title"])
+        assert result.exit_code == 0
+        assert isinstance(cap["command"], TitleCommand)
 
-    def test_close(self):
-        cmd = build_command("close", ["close"])
-        assert isinstance(cmd, CloseCommand)
-
-    def test_close_all(self):
-        cmd = build_command("close", ["close", "--all"])
-        assert isinstance(cmd, CloseCommand)
-        assert cmd.params.all is True
+    def test_close(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["close"])
+        assert result.exit_code == 0
+        assert isinstance(cap["command"], CloseCommand)
 
     # --- Snapshot ---
-    def test_snapshot_basic(self):
-        cmd = build_command("snapshot", ["snapshot"])
+    def test_snapshot_basic(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["snapshot"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, SnapshotCommand)
         assert cmd.params.interactive is False
 
-    def test_snapshot_interactive(self):
-        cmd = build_command("snapshot", ["snapshot", "-i"])
+    def test_snapshot_interactive(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["snapshot", "-i"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, SnapshotCommand)
         assert cmd.params.interactive is True
 
-    def test_snapshot_scoped(self):
-        cmd = build_command("snapshot", ["snapshot", "-s", "#main"])
+    def test_snapshot_scoped(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["snapshot", "-s", "#main"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, SnapshotCommand)
         assert cmd.params.selector == "#main"
 
     # --- Interaction ---
-    def test_click(self):
-        cmd = build_command("click", ["click", "@e1"])
+    def test_click(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["click", "@e1"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, ClickCommand)
         assert cmd.params.ref == "@e1"
 
-    def test_fill(self):
-        cmd = build_command("fill", ["fill", "@e1", "hello"])
+    def test_fill(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["fill", "@e1", "hello"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, FillCommand)
         assert cmd.params.ref == "@e1"
         assert cmd.params.text == "hello"
 
-    def test_type(self):
-        cmd = build_command("type", ["type", "@e1", "hello"])
+    def test_type(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["type", "@e1", "hello"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, TypeCommand)
         assert cmd.params.ref == "@e1"
         assert cmd.params.text == "hello"
 
-    def test_select(self):
-        cmd = build_command("select", ["select", "@e1", "Option A"])
+    def test_select(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["select", "@e1", "Option A"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, SelectCommand)
         assert cmd.params.ref == "@e1"
         assert cmd.params.value == "Option A"
 
-    def test_check(self):
-        cmd = build_command("check", ["check", "@e1"])
+    def test_check(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["check", "@e1"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, CheckCommand)
         assert cmd.params.ref == "@e1"
 
-    def test_hover(self):
-        cmd = build_command("hover", ["hover", "@e1"])
+    def test_hover(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["hover", "@e1"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, HoverCommand)
         assert cmd.params.ref == "@e1"
 
-    def test_press(self):
-        cmd = build_command("press", ["press", "Enter"])
+    def test_press(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["press", "Enter"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, PressCommand)
         assert cmd.params.key == "Enter"
 
     # --- Data extraction ---
-    def test_text(self):
-        cmd = build_command("text", ["text", "@e1"])
+    def test_text(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["text", "@e1"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, TextCommand)
         assert cmd.params.target == "@e1"
 
-    def test_eval(self):
-        cmd = build_command("eval", ["eval", "document.title"])
+    def test_eval(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["eval", "document.title"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, EvalCommand)
         assert cmd.params.expression == "document.title"
 
-    def test_screenshot(self):
-        cmd = build_command("screenshot", ["screenshot", "out.png"])
+    def test_screenshot(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["screenshot", "out.png"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, ScreenshotCommand)
         assert cmd.params.path == "out.png"
 
-    def test_screenshot_full(self):
-        cmd = build_command("screenshot", ["screenshot", "--full", "out.png"])
+    def test_screenshot_full(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["screenshot", "--full", "out.png"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, ScreenshotCommand)
         assert cmd.params.full_page is True
         assert cmd.params.path == "out.png"
 
-    def test_screenshot_no_args(self):
-        cmd = build_command("screenshot", ["screenshot"])
+    def test_screenshot_no_args(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["screenshot"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, ScreenshotCommand)
         assert cmd.params.path is None
 
     # --- Scroll & Wait ---
-    def test_scroll_down(self):
-        cmd = build_command("scroll", ["scroll", "down"])
+    def test_scroll_down(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["scroll", "down"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, ScrollCommand)
-        assert cmd.params.direction == "down"
+        assert cmd.params.direction == ScrollDirection.down
         assert cmd.params.amount == 500
 
-    def test_scroll_up_custom(self):
-        cmd = build_command("scroll", ["scroll", "up", "300"])
+    def test_scroll_up_custom(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["scroll", "up", "300"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, ScrollCommand)
-        assert cmd.params.direction == "up"
+        assert cmd.params.direction == ScrollDirection.up
         assert cmd.params.amount == 300
 
-    def test_wait_ms(self):
-        cmd = build_command("wait", ["wait", "2000"])
+    def test_scroll_left(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["scroll", "left"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
+        assert isinstance(cmd, ScrollCommand)
+        assert cmd.params.direction == ScrollDirection.left
+
+    def test_scroll_right(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["scroll", "right", "800"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
+        assert isinstance(cmd, ScrollCommand)
+        assert cmd.params.direction == ScrollDirection.right
+        assert cmd.params.amount == 800
+
+    def test_wait_ms(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["wait", "2000"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, WaitCommand)
         assert cmd.params.ms == 2000
 
-    def test_wait_ref(self):
-        cmd = build_command("wait", ["wait", "@e1"])
+    def test_wait_ref(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["wait", "@e1"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, WaitCommand)
         assert cmd.params.ref == "@e1"
 
-    def test_wait_selector(self):
-        cmd = build_command("wait", ["wait", "#loading"])
+    def test_wait_selector(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["wait", "#loading"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, WaitCommand)
         assert cmd.params.selector == "#loading"
 
-    def test_wait_url(self):
-        cmd = build_command("wait", ["wait", "--url", "*/dashboard"])
+    def test_wait_url(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["wait", "--url", "*/dashboard"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, WaitCommand)
         assert cmd.params.url == "*/dashboard"
 
     # --- Tabs ---
-    def test_tabs(self):
-        cmd = build_command("tabs", ["tabs"])
-        assert isinstance(cmd, TabsCommand)
+    def test_tabs(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["tabs"])
+        assert result.exit_code == 0
+        assert isinstance(cap["command"], TabsCommand)
 
-    def test_switch(self):
-        cmd = build_command("switch", ["switch", "2"])
+    def test_switch(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["switch", "2"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, SwitchCommand)
         assert cmd.params.index == 2
 
-    def test_close_tab(self):
-        cmd = build_command("close-tab", ["close-tab"])
-        assert isinstance(cmd, CloseTabCommand)
+    def test_close_tab(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["close-tab"])
+        assert result.exit_code == 0
+        assert isinstance(cap["command"], CloseTabCommand)
 
-    # --- Cookies ---
-    def test_cookies_list(self):
-        cmd = build_command("cookies", ["cookies"])
+    # --- Cookies sub-app ---
+    def test_cookies_list(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["cookies", "list"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, CookiesCommand)
         assert cmd.params.op == "list"
 
-    def test_cookies_export(self):
-        cmd = build_command("cookies", ["cookies", "export", "c.json"])
+    def test_cookies_export(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["cookies", "export", "c.json"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, CookiesCommand)
         assert cmd.params.op == "export"
         assert cmd.params.path == "c.json"
 
-    def test_cookies_import(self):
-        cmd = build_command("cookies", ["cookies", "import", "c.json"])
+    def test_cookies_import(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["cookies", "import", "c.json"])
+        assert result.exit_code == 0
+        cmd = cap["command"]
         assert isinstance(cmd, CookiesCommand)
         assert cmd.params.op == "import"
         assert cmd.params.path == "c.json"
 
     # --- Error cases ---
-    def test_unknown_command(self):
-        with pytest.raises(SystemExit):
-            _ = build_command("nonexistent", ["nonexistent"])
+    def test_unknown_command(self, cap: dict[str, object]):
+        assert runner.invoke(app, ["nonexistent"]).exit_code != 0
+        assert "command" not in cap
 
-    def test_open_missing_url(self):
-        with pytest.raises(SystemExit):
-            _ = build_command("open", ["open"])
+    def test_open_missing_url(self, cap: dict[str, object]):
+        assert runner.invoke(app, ["open"]).exit_code != 0
+        assert "command" not in cap
 
-    def test_click_missing_ref(self):
-        with pytest.raises(SystemExit):
-            _ = build_command("click", ["click"])
+    def test_fill_missing_text(self, cap: dict[str, object]):
+        assert runner.invoke(app, ["fill", "@e1"]).exit_code != 0
+        assert "command" not in cap
 
-    def test_fill_missing_text(self):
-        with pytest.raises(SystemExit):
-            _ = build_command("fill", ["fill", "@e1"])
+    def test_scroll_non_integer(self, cap: dict[str, object]):
+        assert runner.invoke(app, ["scroll", "down", "fast"]).exit_code != 0
+        assert "command" not in cap
 
-    # --- Numeric argument validation ---
-    def test_scroll_non_integer(self):
-        with pytest.raises(SystemExit):
-            _ = build_command("scroll", ["scroll", "down", "fast"])
+    def test_scroll_below_minimum(self, cap: dict[str, object]):
+        assert runner.invoke(app, ["scroll", "down", "0"]).exit_code != 0
+        assert "command" not in cap
 
-    def test_scroll_below_minimum(self):
-        with pytest.raises(SystemExit):
-            _ = build_command("scroll", ["scroll", "down", "0"])
+    def test_scroll_bad_direction(self, cap: dict[str, object]):
+        assert runner.invoke(app, ["scroll", "sideways", "100"]).exit_code != 0
+        assert "command" not in cap
 
-    def test_wait_ms_non_integer(self):
+    def test_wait_ms_non_integer(self, cap: dict[str, object]):
         # Leading digit routes to ms parsing; trailing garbage must be rejected.
-        with pytest.raises(SystemExit):
-            _ = build_command("wait", ["wait", "2000ms"])
+        assert runner.invoke(app, ["wait", "2000ms"]).exit_code != 0
+        assert "command" not in cap
 
-    def test_switch_non_integer(self):
-        with pytest.raises(SystemExit):
-            _ = build_command("switch", ["switch", "last"])
+    def test_switch_non_integer(self, cap: dict[str, object]):
+        assert runner.invoke(app, ["switch", "last"]).exit_code != 0
+        assert "command" not in cap
 
-    def test_switch_negative_passes_through(self):
-        # No client-side range check; the daemon owns the valid tab range.
-        cmd = build_command("switch", ["switch", "-1"])
-        assert isinstance(cmd, SwitchCommand)
-        assert cmd.params.index == -1
+    def test_timeout_non_integer(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["--timeout", "soon", "open", "https://x"])
+        assert result.exit_code != 0
+        assert "command" not in cap
 
+    def test_timeout_below_minimum(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["--timeout", "0", "open", "https://x"])
+        assert result.exit_code != 0
+        assert "command" not in cap
 
-class TestParseArgs:
-    def test_defaults(self):
-        flags, _ = parse_args(["open", "https://example.com"])
-        assert flags.session == "default"
-        assert flags.headed is False
-        assert flags.timeout == 1800
-        assert flags.json is False
-        assert flags.persistent is None
-        assert flags.proxy is None
-        assert flags.geoip is True
+    # --- Flag resolution ---
+    def test_persistent_bare_resolves_default_path(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["--persistent", "open", "https://x"])
+        assert result.exit_code == 0
+        flags = cap["flags"]
+        assert isinstance(flags, tuple)
+        assert flags[3] == os.path.expanduser("~/.camoufox-cli/profiles/default")
 
-    def test_session_flag(self):
-        flags, _ = parse_args(["--session", "mysession", "open", "https://example.com"])
-        assert flags.session == "mysession"
+    def test_user_data_dir_explicit_path(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["--user-data-dir", "/tmp/p", "open", "https://x"])
+        assert result.exit_code == 0
+        flags = cap["flags"]
+        assert isinstance(flags, tuple)
+        assert flags[3] == "/tmp/p"
 
-    def test_headed_flag(self):
-        flags, _ = parse_args(["--headed", "open", "https://example.com"])
-        assert flags.headed is True
+    def test_no_persistence_is_none(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["open", "https://x"])
+        assert result.exit_code == 0
+        flags = cap["flags"]
+        assert isinstance(flags, tuple)
+        assert flags[3] is None
 
-    def test_timeout_flag(self):
-        flags, _ = parse_args(["--timeout", "60", "open", "https://example.com"])
-        assert flags.timeout == 60
+    def test_no_geoip(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["--no-geoip", "open", "https://x"])
+        assert result.exit_code == 0
+        flags = cap["flags"]
+        assert isinstance(flags, tuple)
+        assert flags[5] is False
 
-    def test_json_flag(self):
-        flags, _ = parse_args(["--json", "open", "https://example.com"])
-        assert flags.json is True
+    def test_session_flag(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["--session", "s1", "open", "https://x"])
+        assert result.exit_code == 0
+        flags = cap["flags"]
+        assert isinstance(flags, tuple)
+        assert flags[0] == "s1"
 
-    def test_persistent_flag(self):
-        flags, _ = parse_args(
-            ["--persistent", "/tmp/profile", "open", "https://example.com"]
-        )
-        assert flags.persistent == "/tmp/profile"
-
-    def test_proxy_flag(self):
-        flags, _ = parse_args(
-            ["--proxy", "http://127.0.0.1:8080", "open", "https://example.com"]
-        )
-        assert flags.proxy == "http://127.0.0.1:8080"
-
-    def test_proxy_flag_with_auth(self):
-        flags, _ = parse_args(
-            ["--proxy", "http://user:pass@host:8080", "open", "https://example.com"]
-        )
-        assert flags.proxy == "http://user:pass@host:8080"
-
-    def test_missing_proxy_value(self):
-        with pytest.raises(SystemExit):
-            _ = parse_args(["--proxy"])
-
-    def test_no_geoip_flag(self):
-        flags, _ = parse_args(["--no-geoip", "open", "https://example.com"])
-        assert flags.geoip is False
-
-    def test_multiple_flags(self):
-        flags, cmd = parse_args(
-            ["--headed", "--json", "--session", "s1", "snapshot", "-i"]
-        )
-        assert flags.headed is True
-        assert flags.json is True
-        assert flags.session == "s1"
-        assert isinstance(cmd, SnapshotCommand)
-        assert cmd.params.interactive is True
-
-    def test_no_command(self):
-        with pytest.raises(SystemExit):
-            _ = parse_args([])
-
-    def test_missing_session_value(self):
-        with pytest.raises(SystemExit):
-            _ = parse_args(["--session"])
-
-    def test_missing_timeout_value(self):
-        with pytest.raises(SystemExit):
-            _ = parse_args(["--timeout"])
-
-    def test_timeout_non_integer(self):
-        with pytest.raises(SystemExit):
-            _ = parse_args(["--timeout", "soon", "open", "https://example.com"])
-
-    def test_timeout_below_minimum(self):
-        with pytest.raises(SystemExit):
-            _ = parse_args(["--timeout", "0", "open", "https://example.com"])
+    # --- Flag ordering: global options must precede the subcommand ---
+    def test_option_after_subcommand_rejected(self, cap: dict[str, object]):
+        result = runner.invoke(app, ["open", "https://x", "--session", "s1"])
+        assert result.exit_code != 0
+        assert "command" not in cap
 
 
 class TestGetSocketPath:

@@ -17,6 +17,7 @@ In-process-only shapes (``Tab``, ``Flags``, ``ProxySettings``) are not here —
 see ``types.py``.
 """
 
+from enum import StrEnum
 from typing import Annotated, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
@@ -208,8 +209,15 @@ class PdfCommand(_Command):
 # --- Scroll & wait ---------------------------------------------------------
 
 
+class ScrollDirection(StrEnum):
+    up = "up"
+    down = "down"
+    left = "left"
+    right = "right"
+
+
 class ScrollParams(_Params):
-    direction: str = "down"
+    direction: ScrollDirection = ScrollDirection.down
     amount: int = 500
 
 

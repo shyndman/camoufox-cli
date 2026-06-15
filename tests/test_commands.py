@@ -374,6 +374,25 @@ class TestBrowserIntegration:
             },
         )
         assert resp.success is True
+        # The X axis is a distinct branch in the handler (scrollBy(dx, 0)).
+        right = execute(
+            self.manager,
+            {
+                "id": "r3",
+                "action": "scroll",
+                "params": {"direction": "right", "amount": 200},
+            },
+        )
+        assert right.success is True
+        left = execute(
+            self.manager,
+            {
+                "id": "r4",
+                "action": "scroll",
+                "params": {"direction": "left", "amount": 200},
+            },
+        )
+        assert left.success is True
 
     @pytest.mark.integration
     def test_wait_ms(self):

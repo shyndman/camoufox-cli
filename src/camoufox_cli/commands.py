@@ -39,6 +39,7 @@ from .models import (
     ScreenshotCommand,
     ScreenshotParams,
     ScrollCommand,
+    ScrollDirection,
     ScrollParams,
     SelectCommand,
     SelectParams,
@@ -446,8 +447,13 @@ def _cmd_pdf(manager: BrowserManager, cmd_id: str, params: PathParams) -> Respon
 
 
 def _cmd_scroll(manager: BrowserManager, cmd_id: str, params: ScrollParams) -> Response:
-    amount = -params.amount if params.direction == "up" else params.amount
-    manager.get_page().evaluate(f"window.scrollBy(0, {amount})")
+    d = params.direction
+    if d in (ScrollDirection.up, ScrollDirection.down):
+        delta = -params.amount if d == ScrollDirection.up else params.amount
+        manager.get_page().evaluate(f"window.scrollBy(0, {delta})")
+    else:
+        delta = -params.amount if d == ScrollDirection.left else params.amount
+        manager.get_page().evaluate(f"window.scrollBy({delta}, 0)")
     return ok_response(cmd_id)
 
 
