@@ -6,6 +6,7 @@ import socket
 import tempfile
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -51,6 +52,18 @@ from camoufox_cli.operations import (
 from camoufox_cli.types import Tab
 
 runner = CliRunner()
+
+
+def _profiles_ab() -> list[str]:
+    return ["a", "b"]
+
+
+def _active_live() -> list[str]:
+    return ["live"]
+
+
+def _profiles_empty() -> list[str]:
+    return []
 
 
 @pytest.fixture
@@ -423,6 +436,27 @@ class TestCli:
         assert result.exit_code != 0
         assert "command" not in cap
 
+    # --- sessions listing ---
+    def test_sessions_persistent_lists_profiles(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(ops, "list_persistent_sessions", _profiles_ab)
+        monkeypatch.setattr(ops, "list_sessions", _active_live)
+        result = runner.invoke(app, ["sessions", "--persistent"])
+        assert result.exit_code == 0
+        assert result.output.split() == ["a", "b"]
+
+    def test_sessions_active_by_default(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(ops, "list_persistent_sessions", _profiles_ab)
+        monkeypatch.setattr(ops, "list_sessions", _active_live)
+        result = runner.invoke(app, ["sessions"])
+        assert result.exit_code == 0
+        assert result.output.split() == ["live"]
+
+    def test_sessions_persistent_empty_message(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(ops, "list_persistent_sessions", _profiles_empty)
+        result = runner.invoke(app, ["sessions", "--persistent"])
+        assert result.exit_code == 0
+        assert "No persistent profiles." in result.output
+
 
 class TestGetSocketPath:
     def test_default_session(self):
@@ -438,6 +472,21 @@ class TestGetLogPath:
 
     def test_custom_session(self):
         assert get_log_path("my-session") == "/tmp/camoufox-cli-my-session.log"
+
+
+class TestListPersistentSessions:
+    def test_lists_only_directories_sorted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        (tmp_path / "beta").mkdir()
+        (tmp_path / "alpha").mkdir()
+        _ = (tmp_path / "stray.txt").write_text("x")
+        monkeypatch.setattr(ops, "PROFILES_DIR", str(tmp_path))
+        assert ops.list_persistent_sessions() == ["alpha", "beta"]
+
+    def test_missing_dir_returns_empty(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(ops, "PROFILES_DIR", "/nonexistent/xyz")
+        assert ops.list_persistent_sessions() == []
 
 
 class TestFormatTabs:

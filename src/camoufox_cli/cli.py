@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 import time
 from typing import Annotated, cast
@@ -116,7 +115,7 @@ def global_options(
     if user_data_dir is not None:
         resolved: str | None = user_data_dir
     elif persistent:
-        resolved = os.path.expanduser(f"~/.camoufox-cli/profiles/{session}")
+        resolved = ops.get_profile_path(session)
     else:
         resolved = None
     ctx.obj = Flags(
@@ -460,14 +459,20 @@ def install(
 
 
 @app.command()
-def sessions(ctx: typer.Context) -> None:
-    """List active named sessions."""
+def sessions(
+    ctx: typer.Context,
+    persistent: Annotated[
+        bool,
+        typer.Option("--persistent", help="List on-disk persistent profiles instead."),
+    ] = False,
+) -> None:
+    """List active sessions, or persistent profiles with --persistent."""
     f = cast(Flags, ctx.obj)
-    names = ops.list_sessions()
+    names = ops.list_persistent_sessions() if persistent else ops.list_sessions()
     if f.json:
         print(json.dumps(names, indent=2))
     elif not names:
-        print("No active sessions.")
+        print("No persistent profiles." if persistent else "No active sessions.")
     else:
         for s in names:
             print(s)

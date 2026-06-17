@@ -17,6 +17,7 @@ import time
 from .models import Command, Response, command_adapter, response_adapter
 
 SOCKET_PREFIX = "/tmp/camoufox-cli-"
+PROFILES_DIR = os.path.expanduser("~/.camoufox-cli/profiles")
 
 
 class ResponseError(Exception):
@@ -146,6 +147,22 @@ def list_sessions() -> list[str]:
         pass
     sessions.sort()
     return sessions
+
+
+def get_profile_path(session: str) -> str:
+    return os.path.join(PROFILES_DIR, session)
+
+
+def list_persistent_sessions() -> list[str]:
+    profiles: list[str] = []
+    try:
+        for name in os.listdir(PROFILES_DIR):
+            if os.path.isdir(os.path.join(PROFILES_DIR, name)):
+                profiles.append(name)
+    except OSError:
+        pass
+    profiles.sort()
+    return profiles
 
 
 def install_browser(with_deps: bool) -> None:
