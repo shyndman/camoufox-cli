@@ -65,16 +65,54 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 @app.callback()
 def global_options(
     ctx: typer.Context,
-    session: Annotated[str, typer.Option("--session")] = "default",
-    headed: Annotated[bool, typer.Option("--headed")] = False,
-    timeout: Annotated[int, typer.Option("--timeout", min=1)] = 1800,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    persistent: Annotated[bool, typer.Option("--persistent")] = False,
-    user_data_dir: Annotated[str | None, typer.Option("--user-data-dir")] = None,
-    proxy: Annotated[str | None, typer.Option("--proxy")] = None,
-    geoip: Annotated[bool, typer.Option(" /--no-geoip")] = True,
-    locale: Annotated[str | None, typer.Option("--locale")] = None,
+    session: Annotated[
+        str,
+        typer.Option("--session", help="Session name; isolates daemon and profile."),
+    ] = "default",
+    headed: Annotated[
+        bool,
+        typer.Option("--headed", help="Run the browser with a visible window."),
+    ] = False,
+    timeout: Annotated[
+        int,
+        typer.Option(
+            "--timeout", min=1, help="Daemon idle timeout in seconds before shutdown."
+        ),
+    ] = 1800,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print raw JSON instead of formatted output."),
+    ] = False,
+    persistent: Annotated[
+        bool,
+        typer.Option(
+            "--persistent",
+            help="Reuse a fixed identity and profile under ~/.camoufox-cli/profiles.",
+        ),
+    ] = False,
+    user_data_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--user-data-dir", help="Explicit profile dir; overrides --persistent."
+        ),
+    ] = None,
+    proxy: Annotated[
+        str | None,
+        typer.Option("--proxy", help="Proxy URL passed to the browser."),
+    ] = None,
+    geoip: Annotated[
+        bool,
+        typer.Option(
+            " /--no-geoip",
+            help="Spoof geolocation from the proxy's GeoIP; --no-geoip disables it.",
+        ),
+    ] = True,
+    locale: Annotated[
+        str | None,
+        typer.Option("--locale", help="Browser locale, e.g. en-US."),
+    ] = None,
 ) -> None:
+    """Anti-detect browser CLI & Skills for AI agents, powered by Camoufox."""
     if user_data_dir is not None:
         resolved: str | None = user_data_dir
     elif persistent:
@@ -131,32 +169,41 @@ def _run(ctx: typer.Context, command: Command) -> None:
 
 
 @app.command(name="open")
-def open_(ctx: typer.Context, url: str) -> None:
+def open_(
+    ctx: typer.Context,
+    url: Annotated[str, typer.Argument(help="URL to navigate to.")],
+) -> None:
+    """Open a URL, launching the browser if needed."""
     _run(ctx, OpenCommand(id="r1", params=OpenParams(url=url)))
 
 
 @app.command()
 def back(ctx: typer.Context) -> None:
+    """Go back in history."""
     _run(ctx, BackCommand(id="r1"))
 
 
 @app.command()
 def forward(ctx: typer.Context) -> None:
+    """Go forward in history."""
     _run(ctx, ForwardCommand(id="r1"))
 
 
 @app.command()
 def reload(ctx: typer.Context) -> None:
+    """Reload the current page."""
     _run(ctx, ReloadCommand(id="r1"))
 
 
 @app.command()
 def url(ctx: typer.Context) -> None:
+    """Print the current page URL."""
     _run(ctx, UrlCommand(id="r1"))
 
 
 @app.command()
 def title(ctx: typer.Context) -> None:
+    """Print the current page title."""
     _run(ctx, TitleCommand(id="r1"))
 
 
@@ -168,9 +215,18 @@ def title(ctx: typer.Context) -> None:
 @app.command()
 def snapshot(
     ctx: typer.Context,
-    interactive: Annotated[bool, typer.Option("-i", "--interactive")] = False,
-    selector: Annotated[str | None, typer.Option("-s", "--selector")] = None,
+    interactive: Annotated[
+        bool,
+        typer.Option("-i", "--interactive", help="List interactive elements only."),
+    ] = False,
+    selector: Annotated[
+        str | None,
+        typer.Option(
+            "-s", "--selector", help="Scope to a CSS selector (default: body)."
+        ),
+    ] = None,
 ) -> None:
+    """Print the page aria tree with @ref ids for interaction commands."""
     _run(
         ctx,
         SnapshotCommand(
@@ -186,37 +242,68 @@ def snapshot(
 
 
 @app.command()
-def click(ctx: typer.Context, ref: str) -> None:
+def click(
+    ctx: typer.Context,
+    ref: Annotated[str, typer.Argument(help="Element @ref from snapshot.")],
+) -> None:
+    """Click the element at a snapshot @ref."""
     _run(ctx, ClickCommand(id="r1", params=RefParams(ref=ref)))
 
 
 @app.command()
-def check(ctx: typer.Context, ref: str) -> None:
+def check(
+    ctx: typer.Context,
+    ref: Annotated[str, typer.Argument(help="Element @ref from snapshot.")],
+) -> None:
+    """Toggle a checkbox or radio at a snapshot @ref."""
     _run(ctx, CheckCommand(id="r1", params=RefParams(ref=ref)))
 
 
 @app.command()
-def hover(ctx: typer.Context, ref: str) -> None:
+def hover(
+    ctx: typer.Context,
+    ref: Annotated[str, typer.Argument(help="Element @ref from snapshot.")],
+) -> None:
+    """Hover over the element at a snapshot @ref."""
     _run(ctx, HoverCommand(id="r1", params=RefParams(ref=ref)))
 
 
 @app.command()
-def fill(ctx: typer.Context, ref: str, text: str) -> None:
+def fill(
+    ctx: typer.Context,
+    ref: Annotated[str, typer.Argument(help="Element @ref from snapshot.")],
+    text: Annotated[str, typer.Argument(help="Text to enter.")],
+) -> None:
+    """Clear a field and type text into a snapshot @ref."""
     _run(ctx, FillCommand(id="r1", params=RefTextParams(ref=ref, text=text)))
 
 
 @app.command(name="type")
-def type_(ctx: typer.Context, ref: str, text: str) -> None:
+def type_(
+    ctx: typer.Context,
+    ref: Annotated[str, typer.Argument(help="Element @ref from snapshot.")],
+    text: Annotated[str, typer.Argument(help="Text to type.")],
+) -> None:
+    """Type text into a snapshot @ref without clearing it first."""
     _run(ctx, TypeCommand(id="r1", params=RefTextParams(ref=ref, text=text)))
 
 
 @app.command()
-def select(ctx: typer.Context, ref: str, value: str) -> None:
+def select(
+    ctx: typer.Context,
+    ref: Annotated[str, typer.Argument(help="Element @ref from snapshot.")],
+    value: Annotated[str, typer.Argument(help="Option label to select.")],
+) -> None:
+    """Select a dropdown option by its visible label."""
     _run(ctx, SelectCommand(id="r1", params=SelectParams(ref=ref, value=value)))
 
 
 @app.command()
-def press(ctx: typer.Context, key: str) -> None:
+def press(
+    ctx: typer.Context,
+    key: Annotated[str, typer.Argument(help="Key or combo, e.g. Enter or Control+a.")],
+) -> None:
+    """Press a keyboard key or combination."""
     _run(ctx, PressCommand(id="r1", params=PressParams(key=key)))
 
 
@@ -226,21 +313,37 @@ def press(ctx: typer.Context, key: str) -> None:
 
 
 @app.command()
-def text(ctx: typer.Context, target: str) -> None:
+def text(
+    ctx: typer.Context,
+    target: Annotated[str, typer.Argument(help="Snapshot @ref or CSS selector.")],
+) -> None:
+    """Print the text content of an element."""
     _run(ctx, TextCommand(id="r1", params=TextParams(target=target)))
 
 
 @app.command(name="eval")
-def eval_(ctx: typer.Context, expression: str) -> None:
+def eval_(
+    ctx: typer.Context,
+    expression: Annotated[
+        str, typer.Argument(help="JavaScript expression to evaluate.")
+    ],
+) -> None:
+    """Evaluate a JavaScript expression in the page and print its result."""
     _run(ctx, EvalCommand(id="r1", params=EvalParams(expression=expression)))
 
 
 @app.command()
 def screenshot(
     ctx: typer.Context,
-    path: Annotated[str | None, typer.Argument()] = None,
-    full: Annotated[bool, typer.Option("--full")] = False,
+    path: Annotated[
+        str | None,
+        typer.Argument(help="Output file; omit to return base64 JSON."),
+    ] = None,
+    full: Annotated[
+        bool, typer.Option("--full", help="Capture the full scrollable page.")
+    ] = False,
 ) -> None:
+    """Capture a screenshot to a file or as base64 JSON."""
     _run(
         ctx,
         ScreenshotCommand(id="r1", params=ScreenshotParams(path=path, full_page=full)),
@@ -248,7 +351,11 @@ def screenshot(
 
 
 @app.command()
-def pdf(ctx: typer.Context, path: str) -> None:
+def pdf(
+    ctx: typer.Context,
+    path: Annotated[str, typer.Argument(help="Output PDF file path.")],
+) -> None:
+    """Save the current page as a PDF."""
     _run(ctx, PdfCommand(id="r1", params=PathParams(path=path)))
 
 
@@ -260,9 +367,14 @@ def pdf(ctx: typer.Context, path: str) -> None:
 @app.command()
 def scroll(
     ctx: typer.Context,
-    direction: ScrollDirection,
-    amount: Annotated[int, typer.Argument(min=1)] = 500,
+    direction: Annotated[
+        ScrollDirection, typer.Argument(help="Direction: up, down, left, or right.")
+    ],
+    amount: Annotated[
+        int, typer.Argument(min=1, help="Distance in pixels (default 500).")
+    ] = 500,
 ) -> None:
+    """Scroll the page in a direction."""
     _run(
         ctx,
         ScrollCommand(id="r1", params=ScrollParams(direction=direction, amount=amount)),
@@ -272,9 +384,16 @@ def scroll(
 @app.command()
 def wait(
     ctx: typer.Context,
-    target: Annotated[str | None, typer.Argument()] = None,
-    url: Annotated[str | None, typer.Option("--url")] = None,
+    target: Annotated[
+        str | None,
+        typer.Argument(help="Snapshot @ref, milliseconds, or CSS selector."),
+    ] = None,
+    url: Annotated[
+        str | None,
+        typer.Option("--url", help="Wait for a URL glob pattern, e.g. */dashboard."),
+    ] = None,
 ) -> None:
+    """Wait for a snapshot @ref, a delay, a selector, or a URL pattern."""
     if url is not None:
         params = WaitParams(url=url)
     elif target is None:
@@ -305,16 +424,22 @@ def wait(
 
 @app.command()
 def tabs(ctx: typer.Context) -> None:
+    """List open tabs."""
     _run(ctx, TabsCommand(id="r1"))
 
 
 @app.command()
-def switch(ctx: typer.Context, index: int) -> None:
+def switch(
+    ctx: typer.Context,
+    index: Annotated[int, typer.Argument(help="Zero-based tab index from `tabs`.")],
+) -> None:
+    """Switch to the tab at a zero-based index."""
     _run(ctx, SwitchCommand(id="r1", params=SwitchParams(index=index)))
 
 
 @app.command(name="close-tab")
 def close_tab(ctx: typer.Context) -> None:
+    """Close the current tab."""
     _run(ctx, CloseTabCommand(id="r1"))
 
 
@@ -324,12 +449,19 @@ def close_tab(ctx: typer.Context) -> None:
 
 
 @app.command()
-def install(with_deps: Annotated[bool, typer.Option("--with-deps")] = False) -> None:
+def install(
+    with_deps: Annotated[
+        bool,
+        typer.Option("--with-deps", help="Also install system libraries (Linux only)."),
+    ] = False,
+) -> None:
+    """Download the Camoufox browser."""
     ops.install_browser(with_deps)
 
 
 @app.command()
 def sessions(ctx: typer.Context) -> None:
+    """List active named sessions."""
     f = cast(Flags, ctx.obj)
     names = ops.list_sessions()
     if f.json:
@@ -344,8 +476,11 @@ def sessions(ctx: typer.Context) -> None:
 @app.command()
 def close(
     ctx: typer.Context,
-    all_: Annotated[bool, typer.Option("--all")] = False,
+    all_: Annotated[
+        bool, typer.Option("--all", help="Close every active session instead.")
+    ] = False,
 ) -> None:
+    """Close the current session's browser and daemon."""
     if all_:
         results = ops.close_all_sessions()
         if not results:
@@ -368,16 +503,25 @@ app.add_typer(cookies_app, name="cookies")
 
 @cookies_app.command(name="list")
 def cookies_list(ctx: typer.Context) -> None:
+    """Dump cookies as JSON."""
     _run(ctx, CookiesCommand(id="r1", params=CookiesParams(op="list")))
 
 
 @cookies_app.command()
-def export(ctx: typer.Context, path: str) -> None:
+def export(
+    ctx: typer.Context,
+    path: Annotated[str, typer.Argument(help="Destination JSON file (overwritten).")],
+) -> None:
+    """Export cookies to a JSON file."""
     _run(ctx, CookiesCommand(id="r1", params=CookiesParams(op="export", path=path)))
 
 
 @cookies_app.command(name="import")
-def import_(ctx: typer.Context, path: str) -> None:
+def import_(
+    ctx: typer.Context,
+    path: Annotated[str, typer.Argument(help="Source JSON file with a cookie array.")],
+) -> None:
+    """Import cookies from a JSON file into the browser context."""
     _run(ctx, CookiesCommand(id="r1", params=CookiesParams(op="import", path=path)))
 
 
