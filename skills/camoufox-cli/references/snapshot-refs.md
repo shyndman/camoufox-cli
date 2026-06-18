@@ -20,7 +20,7 @@ Traditional approach:
 Full DOM/HTML -> AI parses -> CSS selector -> Action (~3000-5000 tokens)
 ```
 
-camoufox-cli approach:
+camou approach:
 ```
 Compact aria snapshot -> @refs assigned -> Direct interaction (~200-400 tokens)
 ```
@@ -31,14 +31,14 @@ Refs are sequential numbers (`@e1`, `@e2`, ...) assigned to elements during each
 
 ```bash
 # Basic snapshot (shows full page structure)
-camoufox-cli snapshot
+camou snapshot
 
 # Interactive snapshot (-i flag) - RECOMMENDED
-camoufox-cli snapshot -i
+camou snapshot -i
 
 # Scoped to a specific container
-camoufox-cli snapshot -s "#main-content"
-camoufox-cli snapshot -i -s "form.login"
+camou snapshot -s "#main-content"
+camou snapshot -i -s "form.login"
 ```
 
 ### Snapshot Output Format
@@ -78,16 +78,16 @@ Once you have refs, interact directly:
 
 ```bash
 # Click the "Sign In" button
-camoufox-cli click @e4
+camou click @e4
 
 # Fill email input
-camoufox-cli fill @e5 "user@example.com"
+camou fill @e5 "user@example.com"
 
 # Fill password
-camoufox-cli fill @e6 "password123"
+camou fill @e6 "password123"
 
 # Submit the form
-camoufox-cli click @e7
+camou click @e7
 ```
 
 ## Ref Lifecycle
@@ -98,14 +98,14 @@ Refs are assigned by sequential numbering during each snapshot. They are tied to
 
 ```bash
 # Get initial snapshot
-camoufox-cli snapshot -i
+camou snapshot -i
 # - button "Next" [ref=e1]
 
 # Click triggers page change
-camoufox-cli click @e1
+camou click @e1
 
 # MUST re-snapshot to get new refs!
-camoufox-cli snapshot -i
+camou snapshot -i
 # - heading "Page 2" [ref=e1]  <- Different element now!
 ```
 
@@ -131,29 +131,29 @@ This is the most common source of automation errors. When in doubt, re-snapshot.
 
 ```bash
 # CORRECT
-camoufox-cli open https://example.com
-camoufox-cli snapshot -i          # Get refs first
-camoufox-cli click @e1            # Use ref
+camou open https://example.com
+camou snapshot -i          # Get refs first
+camou click @e1            # Use ref
 
 # WRONG
-camoufox-cli open https://example.com
-camoufox-cli click @e1            # Ref doesn't exist yet!
+camou open https://example.com
+camou click @e1            # Ref doesn't exist yet!
 ```
 
 ### 2. Re-Snapshot After Navigation
 
 ```bash
-camoufox-cli click @e5            # Navigates to new page
-camoufox-cli snapshot -i          # Get new refs
-camoufox-cli click @e1            # Use new refs
+camou click @e5            # Navigates to new page
+camou snapshot -i          # Get new refs
+camou click @e1            # Use new refs
 ```
 
 ### 3. Re-Snapshot After Dynamic Changes
 
 ```bash
-camoufox-cli click @e1            # Opens dropdown
-camoufox-cli snapshot -i          # See dropdown items
-camoufox-cli click @e7            # Select item
+camou click @e1            # Opens dropdown
+camou snapshot -i          # See dropdown items
+camou click @e7            # Select item
 ```
 
 ### 4. Scope Snapshots on Complex Pages
@@ -161,16 +161,16 @@ camoufox-cli click @e7            # Select item
 For pages with many elements, scope the snapshot to reduce noise:
 
 ```bash
-camoufox-cli snapshot -i -s "#login-form"
-camoufox-cli snapshot -i -s ".product-list"
+camou snapshot -i -s "#login-form"
+camou snapshot -i -s ".product-list"
 ```
 
 ### 5. Wait Before Snapshot on Slow Pages
 
 ```bash
-camoufox-cli open https://slow-site.com
-camoufox-cli wait 3000            # Wait for content to load
-camoufox-cli snapshot -i          # Now snapshot
+camou open https://slow-site.com
+camou wait 3000            # Wait for content to load
+camou snapshot -i          # Now snapshot
 ```
 
 ## Troubleshooting
@@ -179,7 +179,7 @@ camoufox-cli snapshot -i          # Now snapshot
 
 ```bash
 # Ref was invalidated - re-snapshot
-camoufox-cli snapshot -i
+camou snapshot -i
 ```
 
 Common causes:
@@ -191,22 +191,22 @@ Common causes:
 
 ```bash
 # Scroll down to reveal element
-camoufox-cli scroll down 1000
-camoufox-cli snapshot -i
+camou scroll down 1000
+camou snapshot -i
 
 # Or wait for dynamic content
-camoufox-cli wait 2000
-camoufox-cli snapshot -i
+camou wait 2000
+camou snapshot -i
 ```
 
 ### Too Many Elements
 
 ```bash
 # Scope to specific container
-camoufox-cli snapshot -i -s "#main"
+camou snapshot -i -s "#main"
 
 # Or use text extraction for content-only
-camoufox-cli text body
+camou text body
 ```
 
 ### Duplicate Elements (Same Role + Name)

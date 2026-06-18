@@ -3,38 +3,38 @@ name: camoufox-cli
 description: Anti-detect browser automation CLI & Skills for AI agents. Use when the user needs to interact with websites with bot detection, CAPTCHAs, or anti-bot blocks, including navigating pages, filling forms, clicking buttons, taking screenshots, extracting data, testing web apps, or automating any browser task that requires bypassing fingerprint checks.
 ---
 
-# Anti-Detect Browser Automation with camoufox-cli
+# Anti-Detect Browser Automation with camou
 
 ## What Makes This Different
 
-camoufox-cli is built on Camoufox (anti-detect Firefox) with C++-level fingerprint spoofing:
+camou is built on Camoufox (anti-detect Firefox) with C++-level fingerprint spoofing:
 - `navigator.webdriver` = `false`
 - Real browser plugins, randomized canvas/WebGL/audio fingerprints
 - Real Firefox UA string -- passes bot detection on sites that block Chromium automation
 
-Use camoufox-cli instead of agent-browser when the target site has bot detection.
+Use camou instead of agent-browser when the target site has bot detection.
 
 ## Core Workflow
 
 Every browser automation follows this pattern:
 
-1. **Navigate**: `camoufox-cli open <url>`
-2. **Snapshot**: `camoufox-cli snapshot -i` (get element refs like `@e1`, `@e2`)
+1. **Navigate**: `camou open <url>`
+2. **Snapshot**: `camou snapshot -i` (get element refs like `@e1`, `@e2`)
 3. **Interact**: Use refs to click, fill, select
 4. **Re-snapshot**: After navigation or DOM changes, get fresh refs
-5. **Close**: `camoufox-cli close` (close the browser when the entire task is fully complete; keep it open if the user may have follow-up instructions)
+5. **Close**: `camou close` (close the browser when the entire task is fully complete; keep it open if the user may have follow-up instructions)
 
 ```bash
-camoufox-cli open https://example.com/form
-camoufox-cli snapshot -i
+camou open https://example.com/form
+camou snapshot -i
 # Output: - textbox "Email" [ref=e1]
 #         - textbox "Password" [ref=e2]
 #         - button "Submit" [ref=e3]
 
-camoufox-cli fill @e1 "user@example.com"
-camoufox-cli fill @e2 "password123"
-camoufox-cli click @e3
-camoufox-cli snapshot -i  # Check result
+camou fill @e1 "user@example.com"
+camou fill @e2 "password123"
+camou click @e3
+camou snapshot -i  # Check result
 ```
 
 ## Command Chaining
@@ -43,13 +43,13 @@ Commands can be chained with `&&` in a single shell invocation. The browser pers
 
 ```bash
 # Chain open + snapshot in one call
-camoufox-cli open https://example.com && camoufox-cli snapshot -i
+camou open https://example.com && camou snapshot -i
 
 # Chain multiple interactions
-camoufox-cli fill @e1 "user@example.com" && camoufox-cli fill @e2 "password123" && camoufox-cli click @e3
+camou fill @e1 "user@example.com" && camou fill @e2 "password123" && camou click @e3
 
 # Navigate and capture
-camoufox-cli open https://example.com && camoufox-cli screenshot page.png
+camou open https://example.com && camou screenshot page.png
 ```
 
 **When to chain:** Use `&&` when you don't need to read the output of an intermediate command before proceeding (e.g., open + screenshot). Run commands separately when you need to parse the output first (e.g., snapshot to discover refs, then interact using those refs).
@@ -58,70 +58,70 @@ camoufox-cli open https://example.com && camoufox-cli screenshot page.png
 
 ```bash
 # Navigation
-camoufox-cli open <url>              # Navigate to URL (starts daemon if needed)
-camoufox-cli back                    # Go back
-camoufox-cli forward                 # Go forward
-camoufox-cli reload                  # Reload page
-camoufox-cli url                     # Print current URL
-camoufox-cli title                   # Print page title
-camoufox-cli close                   # Close browser and stop daemon
-camoufox-cli close --all             # Close all sessions
+camou open <url>              # Navigate to URL (starts daemon if needed)
+camou back                    # Go back
+camou forward                 # Go forward
+camou reload                  # Reload page
+camou url                     # Print current URL
+camou title                   # Print page title
+camou close                   # Close browser and stop daemon
+camou close --all             # Close all sessions
 
 # Snapshot
-camoufox-cli snapshot                # Full aria tree of page
-camoufox-cli snapshot -i             # Interactive elements only (recommended)
-camoufox-cli snapshot -s "#selector" # Scope to CSS selector
+camou snapshot                # Full aria tree of page
+camou snapshot -i             # Interactive elements only (recommended)
+camou snapshot -s "#selector" # Scope to CSS selector
 
 # Interaction (use @refs from snapshot)
-camoufox-cli click @e1               # Click element
-camoufox-cli fill @e1 "text"         # Clear + type into input
-camoufox-cli type @e1 "text"         # Type without clearing (append)
-camoufox-cli select @e1 "option"     # Select dropdown option
-camoufox-cli check @e1               # Toggle checkbox
-camoufox-cli hover @e1               # Hover over element
-camoufox-cli press Enter             # Press keyboard key
-camoufox-cli press "Control+a"       # Key combination
+camou click @e1               # Click element
+camou fill @e1 "text"         # Clear + type into input
+camou type @e1 "text"         # Type without clearing (append)
+camou select @e1 "option"     # Select dropdown option
+camou check @e1               # Toggle checkbox
+camou hover @e1               # Hover over element
+camou press Enter             # Press keyboard key
+camou press "Control+a"       # Key combination
 
 # Data Extraction
-camoufox-cli text @e1                # Get text content of element
-camoufox-cli text body               # Get all page text (CSS selector)
-camoufox-cli eval "document.title"   # Execute JavaScript
+camou text @e1                # Get text content of element
+camou text body               # Get all page text (CSS selector)
+camou eval "document.title"   # Execute JavaScript
 
 # Capture
-camoufox-cli screenshot              # Screenshot as JSON {"base64": "..."}
-camoufox-cli screenshot page.png     # Screenshot to file
-camoufox-cli screenshot --full p.png # Full page screenshot
-camoufox-cli pdf output.pdf          # Save page as PDF
+camou screenshot              # Screenshot as JSON {"base64": "..."}
+camou screenshot page.png     # Screenshot to file
+camou screenshot --full p.png # Full page screenshot
+camou pdf output.pdf          # Save page as PDF
 
 # Scroll & Wait
-camoufox-cli scroll down             # Scroll down 500px
-camoufox-cli scroll up               # Scroll up 500px
-camoufox-cli scroll left             # Scroll left 500px
-camoufox-cli scroll right            # Scroll right 500px
-camoufox-cli scroll down 1000        # Scroll down 1000px
-camoufox-cli scroll right 800        # Scroll right 800px
-camoufox-cli wait @e1                # Wait for element to appear
-camoufox-cli wait 2000               # Wait milliseconds
-camoufox-cli wait --url "*/dashboard" # Wait for URL pattern
+camou scroll down             # Scroll down 500px
+camou scroll up               # Scroll up 500px
+camou scroll left             # Scroll left 500px
+camou scroll right            # Scroll right 500px
+camou scroll down 1000        # Scroll down 1000px
+camou scroll right 800        # Scroll right 800px
+camou wait @e1                # Wait for element to appear
+camou wait 2000               # Wait milliseconds
+camou wait --url "*/dashboard" # Wait for URL pattern
 
 # Tabs
-camoufox-cli tabs                    # List open tabs
-camoufox-cli switch 2                # Switch to tab by index
-camoufox-cli close-tab               # Close current tab
+camou tabs                    # List open tabs
+camou switch 2                # Switch to tab by index
+camou close-tab               # Close current tab
 
 # Cookies & State
-camoufox-cli cookies                 # Dump cookies as JSON
-camoufox-cli cookies import file.json # Import cookies
-camoufox-cli cookies export file.json # Export cookies
+camou cookies                 # Dump cookies as JSON
+camou cookies import file.json # Import cookies
+camou cookies export file.json # Export cookies
 
 # Sessions
-camoufox-cli sessions                # List active sessions
-camoufox-cli --session work open <url> # Use named session
-camoufox-cli close --all             # Close all sessions
+camou sessions                # List active sessions
+camou --session work open <url> # Use named session
+camou close --all             # Close all sessions
 
 # Setup
-camoufox-cli install                 # Download Camoufox browser
-camoufox-cli install --with-deps     # Download browser + system libs (Linux)
+camou install                 # Download Camoufox browser
+camou install --with-deps     # Download browser + system libs (Linux)
 ```
 
 ## Common Patterns
@@ -129,41 +129,41 @@ camoufox-cli install --with-deps     # Download browser + system libs (Linux)
 ### Form Submission
 
 ```bash
-camoufox-cli open https://example.com/signup
-camoufox-cli snapshot -i
-camoufox-cli fill @e1 "Jane Doe"
-camoufox-cli fill @e2 "jane@example.com"
-camoufox-cli select @e3 "California"
-camoufox-cli check @e4
-camoufox-cli click @e5
-camoufox-cli snapshot -i  # Verify submission result
+camou open https://example.com/signup
+camou snapshot -i
+camou fill @e1 "Jane Doe"
+camou fill @e2 "jane@example.com"
+camou select @e3 "California"
+camou check @e4
+camou click @e5
+camou snapshot -i  # Verify submission result
 ```
 
 ### Data Extraction
 
 ```bash
-camoufox-cli open https://example.com/products
-camoufox-cli snapshot -i
-camoufox-cli text @e5                # Get specific element text
-camoufox-cli eval "document.title"   # Get page title via JS
-camoufox-cli screenshot results.png  # Visual capture
+camou open https://example.com/products
+camou snapshot -i
+camou text @e5                # Get specific element text
+camou eval "document.title"   # Get page title via JS
+camou screenshot results.png  # Visual capture
 ```
 
 ### Cookie Management (Persist Login)
 
 ```bash
 # Login and export cookies
-camoufox-cli open https://app.example.com/login
-camoufox-cli snapshot -i
-camoufox-cli fill @e1 "user"
-camoufox-cli fill @e2 "pass"
-camoufox-cli click @e3
-camoufox-cli cookies export auth.json
+camou open https://app.example.com/login
+camou snapshot -i
+camou fill @e1 "user"
+camou fill @e2 "pass"
+camou click @e3
+camou cookies export auth.json
 
 # Restore in future session
-camoufox-cli open https://app.example.com
-camoufox-cli cookies import auth.json
-camoufox-cli reload
+camou open https://app.example.com
+camou cookies import auth.json
+camou reload
 ```
 
 For long-lived accounts where the site also verifies device stability (not just the cookie), combine this with `--persistent` so the fingerprint stays fixed alongside the cookies — see the Persistent Identity section below.
@@ -171,29 +171,29 @@ For long-lived accounts where the site also verifies device stability (not just 
 ### Multiple Tabs
 
 ```bash
-camoufox-cli open https://site-a.com
-camoufox-cli eval "window.open('https://site-b.com')"
-camoufox-cli tabs                    # List tabs
-camoufox-cli switch 1                # Switch to second tab
-camoufox-cli snapshot -i
+camou open https://site-a.com
+camou eval "window.open('https://site-b.com')"
+camou tabs                    # List tabs
+camou switch 1                # Switch to second tab
+camou snapshot -i
 ```
 
 ### Parallel Sessions
 
 ```bash
-camoufox-cli --session s1 open https://site-a.com
-camoufox-cli --session s2 open https://site-b.com
-camoufox-cli sessions                # List both
-camoufox-cli --session s1 snapshot -i
-camoufox-cli --session s2 snapshot -i
+camou --session s1 open https://site-a.com
+camou --session s2 open https://site-b.com
+camou sessions                # List both
+camou --session s1 snapshot -i
+camou --session s2 snapshot -i
 ```
 
 ### Visual Browser (Debugging)
 
 ```bash
-camoufox-cli --headed open https://example.com
-camoufox-cli snapshot -i
-camoufox-cli screenshot debug.png
+camou --headed open https://example.com
+camou snapshot -i
+camou screenshot debug.png
 ```
 
 ## Session Management and Cleanup
@@ -201,20 +201,20 @@ camoufox-cli screenshot debug.png
 When running multiple agents or automations concurrently, always use named sessions to avoid conflicts:
 
 ```bash
-camoufox-cli --session agent1 open https://site-a.com
-camoufox-cli --session agent2 open https://site-b.com
-camoufox-cli sessions                  # Check active sessions
+camou --session agent1 open https://site-a.com
+camou --session agent2 open https://site-b.com
+camou sessions                  # Check active sessions
 ```
 
 Always close your browser session when done to avoid leaked processes:
 
 ```bash
-camoufox-cli close                     # Close default session
-camoufox-cli --session agent1 close    # Close specific session
-camoufox-cli close --all               # Close all sessions
+camou close                     # Close default session
+camou --session agent1 close    # Close specific session
+camou close --all               # Close all sessions
 ```
 
-If a previous session was not closed properly, the daemon may still be running. Use `camoufox-cli close` to clean it up before starting new work.
+If a previous session was not closed properly, the daemon may still be running. Use `camou close` to clean it up before starting new work.
 
 ## Timeouts and Slow Pages
 
@@ -222,16 +222,16 @@ Some pages take time to fully load, especially those with dynamic content or hea
 
 ```bash
 # Wait for a specific element to appear
-camoufox-cli wait @e1
-camoufox-cli snapshot -i
+camou wait @e1
+camou snapshot -i
 
 # Wait for a URL pattern (useful after redirects)
-camoufox-cli wait --url "*/dashboard"
-camoufox-cli snapshot -i
+camou wait --url "*/dashboard"
+camou snapshot -i
 
 # Wait a fixed duration as a last resort
-camoufox-cli wait 3000
-camoufox-cli snapshot -i
+camou wait 3000
+camou snapshot -i
 ```
 
 When dealing with slow pages, always wait before snapshotting. If you snapshot too early, elements may be missing from the output.
@@ -249,22 +249,22 @@ Refs (`@e1`, `@e2`, etc.) are **temporary identifiers** assigned by sequential n
 
 ```bash
 # CORRECT: re-snapshot after navigation
-camoufox-cli click @e5              # Navigates to new page
-camoufox-cli snapshot -i            # MUST re-snapshot
-camoufox-cli click @e1              # Use new refs
+camou click @e5              # Navigates to new page
+camou snapshot -i            # MUST re-snapshot
+camou click @e1              # Use new refs
 
 # CORRECT: re-snapshot after dynamic changes
-camoufox-cli click @e1              # Opens dropdown
-camoufox-cli snapshot -i            # See dropdown items
-camoufox-cli click @e7              # Select item
+camou click @e1              # Opens dropdown
+camou snapshot -i            # See dropdown items
+camou click @e7              # Select item
 
 # WRONG: using refs without snapshot
-camoufox-cli open https://example.com
-camoufox-cli click @e1              # Ref doesn't exist yet!
+camou open https://example.com
+camou click @e1              # Ref doesn't exist yet!
 
 # WRONG: using old refs after navigation
-camoufox-cli click @e5              # Navigates away
-camoufox-cli click @e3              # STALE REF - wrong element!
+camou click @e5              # Navigates away
+camou click @e3              # STALE REF - wrong element!
 ```
 
 Always take a fresh snapshot before interacting with elements after navigation or page changes.
@@ -276,39 +276,39 @@ Always take a fresh snapshot before interacting with elements after navigation o
 The ref was invalidated. Re-snapshot to get fresh refs:
 
 ```bash
-camoufox-cli snapshot -i
+camou snapshot -i
 ```
 
 ### Element Not Visible in Snapshot
 
 ```bash
 # Scroll down to reveal element
-camoufox-cli scroll down 1000
-camoufox-cli snapshot -i
+camou scroll down 1000
+camou snapshot -i
 
 # Or wait for dynamic content
-camoufox-cli wait 2000
-camoufox-cli snapshot -i
+camou wait 2000
+camou snapshot -i
 ```
 
 ### Too Many Elements in Snapshot
 
 ```bash
 # Scope to a specific container
-camoufox-cli snapshot -s "#main-content"
-camoufox-cli snapshot -i -s "form.login"
+camou snapshot -s "#main-content"
+camou snapshot -i -s "form.login"
 ```
 
 ### Page Not Fully Loaded
 
 ```bash
 # Wait for URL pattern after redirect
-camoufox-cli wait --url "*/dashboard"
-camoufox-cli snapshot -i
+camou wait --url "*/dashboard"
+camou snapshot -i
 
 # Wait a fixed duration as last resort
-camoufox-cli wait 3000
-camoufox-cli snapshot -i
+camou wait 3000
+camou snapshot -i
 ```
 
 ## Global Flags
@@ -327,14 +327,16 @@ camoufox-cli snapshot -i
 
 ## Persistent Identity
 
+**Do not use `--persistent` or `--user-data-dir` unless the user explicitly asks for a saved/persistent identity.** They write a profile directory to disk that survives every run and is never cleaned up automatically; defaulting to them litters `~/.camoufox-cli/profiles/`. For ordinary navigation, scraping, form-filling, and debugging, omit both flags — the ephemeral default is correct.
+
 By default, every launch gets a fresh random fingerprint. To reuse the same fingerprint + cookies across launches, use `--persistent` (default path `~/.camoufox-cli/profiles/<session>`) or `--user-data-dir <path>` for an explicit directory — fingerprint/OS/canvas+font seeds are frozen on first launch (delete the directory to reset); `--locale` and proxy-derived timezone/geolocation are stored but refreshed whenever you pass the flag; `--proxy` / `--no-geoip` are never stored, so pass them every launch.
 
-**Use it when** the same device should see the same fingerprint across visits (account-bound tasks, parallel independent identities, or when `cookies import/export` alone isn't enough because the site also checks device stability). **Skip it** for one-off scraping or quick debugging.
+**Use it only when** the same device should see the same fingerprint across visits (account-bound tasks, parallel independent identities, or when `cookies import/export` alone isn't enough because the site also checks device stability), and the user has asked for that persistence. **Skip it** for one-off scraping or quick debugging.
 
 ```bash
 # Parallel identities, each with its own fingerprint + cookies
-camoufox-cli --session a --user-data-dir ~/.camoufox-cli/profiles/alice open https://app.example.com
-camoufox-cli --session b --user-data-dir ~/.camoufox-cli/profiles/bob   open https://app.example.com
+camou --session a --user-data-dir ~/.camoufox-cli/profiles/alice open https://app.example.com
+camou --session b --user-data-dir ~/.camoufox-cli/profiles/bob   open https://app.example.com
 
 # Reset an identity: just remove the directory
 rm -rf ~/.camoufox-cli/profiles/alice
@@ -342,4 +344,4 @@ rm -rf ~/.camoufox-cli/profiles/alice
 
 ## Documentation
 
-- [camoufox-cli documentation](https://github.com/shyndman/camoufox-cli) -- Full README, setup guide, installation, and command reference
+- [camou documentation](https://github.com/shyndman/camoufox-cli) -- Full README, setup guide, installation, and command reference

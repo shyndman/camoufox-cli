@@ -31,7 +31,7 @@ Repository = "https://github.com/shyndman/camoufox-cli"
 Issues = "https://github.com/shyndman/camoufox-cli/issues"
 
 [project.scripts]
-camoufox-cli = "camoufox_cli.cli:main"
+camou = "camoufox_cli.cli:main"
 
 [build-system]
 requires = ["hatchling"]
