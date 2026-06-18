@@ -474,8 +474,10 @@ def sessions(
     elif not names:
         print("No persistent profiles." if persistent else "No active sessions.")
     else:
+        if persistent:
+            print(f"From {ops.PROFILES_DIR}/:\n")
         for s in names:
-            print(s)
+            print(f"  {s}" if persistent else s)
 
 
 @app.command()

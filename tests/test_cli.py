@@ -442,7 +442,8 @@ class TestCli:
         monkeypatch.setattr(ops, "list_sessions", _active_live)
         result = runner.invoke(app, ["sessions", "--persistent"])
         assert result.exit_code == 0
-        assert result.output.split() == ["a", "b"]
+        assert f"From {ops.PROFILES_DIR}/:" in result.output
+        assert result.output.split() == ["From", f"{ops.PROFILES_DIR}/:", "a", "b"]
 
     def test_sessions_active_by_default(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(ops, "list_persistent_sessions", _profiles_ab)
