@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import signal
 import socket
 import sys
+import tempfile
 import threading
 import time
 from types import FrameType
@@ -27,14 +29,22 @@ class DaemonServer:
         proxy: str | None = None,
         geoip: bool = True,
         locale: str | None = None,
+        clone_from: str | None = None,
     ):
         self.session: str = session
         self.headless: bool = headless
         self.timeout: int = timeout  # idle timeout in seconds
         self.socket_path: str = f"/tmp/camoufox-cli-{session}.sock"
         self.pid_path: str = f"/tmp/camoufox-cli-{session}.pid"
+        self._clone_from: str | None = clone_from
+        self._ephemeral_dir: str | None = (
+            tempfile.mkdtemp(prefix="camoufox-cli-clone-") if clone_from else None
+        )
         self.manager: BrowserManager = BrowserManager(
-            persistent=persistent, proxy=proxy, geoip=geoip, locale=locale
+            persistent=self._ephemeral_dir or persistent,
+            proxy=proxy,
+            geoip=geoip,
+            locale=locale,
         )
         self._server_socket: socket.socket | None = None
         self._last_activity: float = time.time()
@@ -61,6 +71,7 @@ class DaemonServer:
             self._server_socket.bind(self.socket_path)
             self._server_socket.listen(5)
             self._server_socket.settimeout(1.0)  # allow periodic checks
+            self._clone_profile()
 
             while self._running:
                 try:
@@ -79,6 +90,17 @@ class DaemonServer:
                     conn.close()
         finally:
             self._shutdown()
+
+    def _clone_profile(self) -> None:
+        """Copy the source persistent profile into the ephemeral dir so the
+        session starts with the human's cookies/identity and writes nothing
+        back."""
+        if self._clone_from is None or self._ephemeral_dir is None:
+            return
+        # ponytail: copies the whole profile dir; if huge caches ever push the
+        # copy past the client's socket-wait, exclude cache subdirs. Source is
+        # read-only.
+        _ = shutil.copytree(self._clone_from, self._ephemeral_dir, dirs_exist_ok=True)
 
     def _handle_connection(self, conn: socket.socket) -> None:
         data = b""
@@ -152,6 +174,8 @@ class DaemonServer:
 
     def _shutdown(self) -> None:
         self.manager.close()
+        if self._ephemeral_dir is not None:
+            shutil.rmtree(self._ephemeral_dir, ignore_errors=True)
         if self._server_socket:
             with contextlib.suppress(Exception):
                 self._server_socket.close()

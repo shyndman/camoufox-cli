@@ -21,6 +21,7 @@ class _Args(argparse.Namespace):
     proxy: str | None = None
     geoip: bool = True
     locale: str | None = None
+    clone_from: str | None = None
 
 
 def main():
@@ -49,6 +50,11 @@ def main():
         default=None,
         help="Force browser locale (e.g. 'en-US' or 'en-US,zh-CN')",
     )
+    _ = parser.add_argument(
+        "--clone-from",
+        default=None,
+        help="Seed an ephemeral profile copied from this persistent profile path",
+    )
     args = parser.parse_args(namespace=_Args())
 
     headless = not args.headed
@@ -61,6 +67,7 @@ def main():
         proxy=args.proxy,
         geoip=args.geoip,
         locale=args.locale,
+        clone_from=args.clone_from,
     )
 
     print(

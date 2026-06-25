@@ -69,6 +69,7 @@ def spawn_daemon(
     proxy: str | None = None,
     geoip: bool = True,
     locale: str | None = None,
+    clone_from: str | None = None,
 ) -> None:
     cmd = [
         sys.executable,
@@ -89,6 +90,8 @@ def spawn_daemon(
         cmd.append("--no-geoip")
     if locale:
         cmd.extend(["--locale", locale])
+    if clone_from:
+        cmd.extend(["--clone-from", clone_from])
 
     log_path = get_log_path(session)
     with open(log_path, "ab", buffering=0) as log_file:
@@ -120,6 +123,7 @@ def ensure_daemon(
     proxy: str | None = None,
     geoip: bool = True,
     locale: str | None = None,
+    clone_from: str | None = None,
 ) -> None:
     sock_path = get_socket_path(session)
     if os.path.exists(sock_path):
@@ -134,7 +138,7 @@ def ensure_daemon(
             # Stale socket from a dead daemon — clean up
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(sock_path)
-    spawn_daemon(session, headed, timeout, persistent, proxy, geoip, locale)
+    spawn_daemon(session, headed, timeout, persistent, proxy, geoip, locale, clone_from)
 
 
 def list_sessions() -> list[str]:

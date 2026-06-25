@@ -48,3 +48,4 @@ class Flags:
     proxy: str | None = None
     geoip: bool = True
     locale: str | None = None
+    clone_from: str | None = None

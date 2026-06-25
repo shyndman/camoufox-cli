@@ -83,8 +83,18 @@ def cap(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         proxy: str | None,
         geoip: bool,
         locale: str | None,
+        clone_from: str | None = None,
     ) -> None:
-        box["flags"] = (session, headed, timeout, persistent, proxy, geoip, locale)
+        box["flags"] = (
+            session,
+            headed,
+            timeout,
+            persistent,
+            proxy,
+            geoip,
+            locale,
+            clone_from,
+        )
 
     def fake_send(_sock_path: str, command: Command) -> OkResponse:
         box["command"] = command
@@ -457,6 +467,41 @@ class TestCli:
         result = runner.invoke(app, ["sessions", "--persistent"])
         assert result.exit_code == 0
         assert "No persistent profiles." in result.output
+
+    def test_clone_from_passes_source_path(
+        self, cap: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(ops, "PROFILES_DIR", str(tmp_path))
+        (tmp_path / "src").mkdir()
+        result = runner.invoke(
+            app,
+            ["--session", "work", "--clone-from", "src", "open", "https://x"],
+        )
+        assert result.exit_code == 0
+        flags = cap["flags"]
+        assert isinstance(flags, tuple)
+        assert flags[7] == str(tmp_path / "src")
+        assert flags[3] is None
+
+    def test_clone_from_missing_source_errors(
+        self, cap: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(ops, "PROFILES_DIR", str(tmp_path))
+        result = runner.invoke(app, ["--clone-from", "nope", "open", "https://x"])
+        assert result.exit_code == 1
+        assert "command" not in cap
+
+    def test_clone_from_conflicts_with_persistent(
+        self, cap: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(ops, "PROFILES_DIR", str(tmp_path))
+        (tmp_path / "src").mkdir()
+        result = runner.invoke(
+            app,
+            ["--clone-from", "src", "--persistent", "open", "https://x"],
+        )
+        assert result.exit_code == 1
+        assert "command" not in cap
 
 
 class TestGetSocketPath:

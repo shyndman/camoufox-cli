@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from typing import Annotated, cast
@@ -110,14 +111,38 @@ def global_options(
         str | None,
         typer.Option("--locale", help="Browser locale, e.g. en-US."),
     ] = None,
+    clone_from: Annotated[
+        str | None,
+        typer.Option(
+            "--clone-from",
+            help=(
+                "Seed an ephemeral session from a persistent profile; "
+                "discarded on close."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Anti-detect browser CLI & Skills for AI agents, powered by Camoufox."""
-    if user_data_dir is not None:
-        resolved: str | None = user_data_dir
-    elif persistent:
-        resolved = ops.get_profile_path(session)
+    if clone_from is not None:
+        clone_src: str | None = ops.get_profile_path(clone_from)
+        if not os.path.isdir(clone_src):
+            print(f"Error: no persistent profile named '{clone_from}'", file=sys.stderr)
+            raise typer.Exit(1)
+        if persistent or user_data_dir is not None:
+            print(
+                "Error: --clone-from conflicts with --persistent/--user-data-dir",
+                file=sys.stderr,
+            )
+            raise typer.Exit(1)
+        resolved: str | None = None
     else:
-        resolved = None
+        clone_src = None
+        if user_data_dir is not None:
+            resolved = user_data_dir
+        elif persistent:
+            resolved = ops.get_profile_path(session)
+        else:
+            resolved = None
     ctx.obj = Flags(
         session=session,
         headed=headed,
@@ -127,13 +152,21 @@ def global_options(
         proxy=proxy,
         geoip=geoip,
         locale=locale,
+        clone_from=clone_src,
     )
 
 
 def _run(ctx: typer.Context, command: Command) -> None:
     f = cast(Flags, ctx.obj)
     ops.ensure_daemon(
-        f.session, f.headed, f.timeout, f.persistent, f.proxy, f.geoip, f.locale
+        f.session,
+        f.headed,
+        f.timeout,
+        f.persistent,
+        f.proxy,
+        f.geoip,
+        f.locale,
+        f.clone_from,
     )
     sock = ops.get_socket_path(f.session)
     last_err = ""

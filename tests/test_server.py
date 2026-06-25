@@ -158,3 +158,17 @@ class TestInjectTabChanges:
 
         assert resp.data is not None
         assert resp.data.tabs == handler_tabs
+
+
+class TestCloneLifecycle:
+    def test_clone_copies_then_cleans(self, tmp_path: Path):
+        src = tmp_path / "source"
+        src.mkdir()
+        _ = (src / "cookies.sqlite").write_text("marker")
+        server = DaemonServer(session="clonetest", clone_from=str(src))
+        assert server._ephemeral_dir is not None
+        server._clone_profile()
+        assert (Path(server._ephemeral_dir) / "cookies.sqlite").read_text() == "marker"
+        eph = server._ephemeral_dir
+        server._shutdown()
+        assert not os.path.exists(eph)

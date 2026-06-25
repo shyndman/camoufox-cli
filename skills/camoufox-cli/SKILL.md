@@ -320,6 +320,7 @@ camou snapshot -i
 --json                 Output as JSON instead of human-readable
 --persistent           Persistent identity at the default path (~/.camoufox-cli/profiles/<session>)
 --user-data-dir <path> Persistent identity at an explicit directory
+--clone-from <name>    Ephemeral session seeded from a persistent profile (discarded on close)
 --proxy <url>          Proxy server (http:// or https://; auth: http://user:pass@host:port)
 --no-geoip             Disable automatic GeoIP spoofing (auto-enabled with --proxy)
 --locale <tag>         Force browser locale (e.g. "en-US" or "en-US,zh-CN")
@@ -341,6 +342,27 @@ camou --session b --user-data-dir ~/.camoufox-cli/profiles/bob   open https://ap
 # Reset an identity: just remove the directory
 rm -rf ~/.camoufox-cli/profiles/alice
 ```
+
+## Ephemeral Clones
+
+`--clone-from <source>` starts a session whose profile is a throwaway copy of the
+persistent profile `~/.camoufox-cli/profiles/<source>`. The session inherits the
+source's cookies/login and frozen fingerprint but **writes nothing back** — the
+copy is deleted when the session's daemon closes. Use it to give an automation
+read-only access to a profile you logged into by hand, without risking the saved
+state.
+
+```bash
+# Log in by hand once into a persistent profile
+camou --session human --persistent --headed open https://app.example.com
+camou --session human close
+
+# Run automations off a throwaway copy — the original is never touched
+camou --session bot --clone-from human open https://app.example.com
+camou --session bot close   # clone discarded
+```
+
+`--clone-from` cannot be combined with `--persistent` or `--user-data-dir`.
 
 ## Documentation
 
