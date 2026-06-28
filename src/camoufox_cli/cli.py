@@ -305,9 +305,29 @@ def fill(
     ctx: typer.Context,
     ref: Annotated[str, typer.Argument(help="Element @ref from snapshot.")],
     text: Annotated[str, typer.Argument(help="Text to enter.")],
+    humanize: Annotated[
+        bool,
+        typer.Option(
+            " /--no-humanize",
+            help=(
+                "Human-typing is on by default. --no-humanize sets the value "
+                "instantly: faster, but the instant input is trivially "
+                "detectable as a bot."
+            ),
+        ),
+    ] = True,
+    wpm: Annotated[
+        float, typer.Option("--wpm", help="Human typing speed in words per minute.")
+    ] = 60.0,
 ) -> None:
     """Clear a field and type text into a snapshot @ref."""
-    _run(ctx, FillCommand(id="r1", params=RefTextParams(ref=ref, text=text)))
+    _run(
+        ctx,
+        FillCommand(
+            id="r1",
+            params=RefTextParams(ref=ref, text=text, humanize=humanize, wpm=wpm),
+        ),
+    )
 
 
 @app.command(name="type")
@@ -315,9 +335,29 @@ def type_(
     ctx: typer.Context,
     ref: Annotated[str, typer.Argument(help="Element @ref from snapshot.")],
     text: Annotated[str, typer.Argument(help="Text to type.")],
+    humanize: Annotated[
+        bool,
+        typer.Option(
+            " /--no-humanize",
+            help=(
+                "Human-typing is on by default. --no-humanize sets the value "
+                "instantly: faster, but the instant input is trivially "
+                "detectable as a bot."
+            ),
+        ),
+    ] = True,
+    wpm: Annotated[
+        float, typer.Option("--wpm", help="Human typing speed in words per minute.")
+    ] = 60.0,
 ) -> None:
     """Type text into a snapshot @ref without clearing it first."""
-    _run(ctx, TypeCommand(id="r1", params=RefTextParams(ref=ref, text=text)))
+    _run(
+        ctx,
+        TypeCommand(
+            id="r1",
+            params=RefTextParams(ref=ref, text=text, humanize=humanize, wpm=wpm),
+        ),
+    )
 
 
 @app.command()

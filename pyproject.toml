@@ -23,6 +23,7 @@ dependencies = [
     "Pillow",
     "pydantic>=2.13.4",
     "typer>=0.12",
+    "humantyping",
 ]
 
 [project.urls]
@@ -78,6 +79,9 @@ select = [
     # isort
     "I",
 ]
+
+[tool.uv.sources]
+humantyping = { git = "https://github.com/shyndman/HumanTyping" }
 
 [dependency-groups]
 dev = [

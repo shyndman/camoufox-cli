@@ -7,6 +7,7 @@ import io
 import json
 from typing import cast, get_args
 
+from humantyping import HumanTyper
 from playwright._impl._api_structures import AriaRole, SetCookieParam
 from playwright.sync_api import Locator
 from pydantic import JsonValue, ValidationError
@@ -343,14 +344,24 @@ def _cmd_click(manager: BrowserManager, cmd_id: str, params: RefParams) -> Respo
 def _cmd_fill(manager: BrowserManager, cmd_id: str, params: RefTextParams) -> Response:
     if not params.ref:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    _resolve_ref(manager, params.ref).fill(params.text)
+    locator = _resolve_ref(manager, params.ref)
+    if not params.humanize:
+        locator.fill(params.text)
+    else:
+        locator.fill("")  # clear first — matches fill's clear-then-type contract
+        if params.text:
+            HumanTyper(wpm=params.wpm).type_playwright_sync(locator, params.text)
     return ok_response(cmd_id)
 
 
 def _cmd_type(manager: BrowserManager, cmd_id: str, params: RefTextParams) -> Response:
     if not params.ref:
         return error_response(cmd_id, "Missing 'ref' parameter")
-    _resolve_ref(manager, params.ref).press_sequentially(params.text)
+    locator = _resolve_ref(manager, params.ref)
+    if not params.humanize:
+        locator.press_sequentially(params.text)
+    elif params.text:
+        HumanTyper(wpm=params.wpm).type_playwright_sync(locator, params.text)
     return ok_response(cmd_id)
 
 

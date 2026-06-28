@@ -135,6 +135,8 @@ class HoverCommand(_Command):
 class RefTextParams(_Params):
     ref: str
     text: str
+    humanize: bool = True
+    wpm: float = 60.0
 
 
 class FillCommand(_Command):
